@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: x402-agent-store
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: X402_PAY_TO
+        sync: false
+      - key: X402_NETWORKS
+        value: eip155:8453,eip155:84532
+      - key: FACILITATOR_URL
+        value: https://facilitator.payai.network
+      - key: SEPOLIA_FACILITATOR_URL
+        value: https://x402.org/facilitator

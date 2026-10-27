@@ -1,0 +1,196 @@
+from app.compat import install_optional_stubs
+
+install_optional_stubs()
+
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import HTMLResponse, Response
+from x402.http.middleware.fastapi import PaymentMiddlewareASGI
+from x402.http.paywall import create_paywall, evm_paywall
+from x402.http.types import PaywallConfig
+
+from app.catalog import PRODUCTS, public_catalog
+from app.config import get_settings
+from app.models import (
+    LinksResponse,
+    OutlineResponse,
+    ScrapeRequest,
+    ScrapeResponse,
+    TextResponse,
+    TitleResponse,
+)
+from app.payments import paid_routes, paywall_is_testnet, resource_server, settlement_ready
+from app.scraper import ScrapeError, fetch_page
+
+settings = get_settings()
+
+app = FastAPI(
+    title="x402 Agent Store",
+    description="Penny-priced web extraction APIs for AI agents, charged in USDC via x402.",
+    version="0.2.0",
+)
+
+server = resource_server(settings)
+routes = paid_routes(settings)
+testnet = paywall_is_testnet(settings)
+paywall = (
+    create_paywall()
+    .with_network(evm_paywall)
+    .with_config(app_name="x402 Agent Store", testnet=testnet)
+    .build()
+)
+
+
+class CoinbaseWalletCompatMiddleware(BaseHTTPMiddleware):
+    """HEAD must be 200 so Coinbase Wallet can probe the page. Do not set COOP."""
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method == "HEAD":
+            return Response(
+                status_code=200,
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Expose-Headers": (
+                        "PAYMENT-REQUIRED, PAYMENT-RESPONSE, PAYMENT-SIGNATURE"
+                    ),
+                    "Cache-Control": "no-store",
+                },
+            )
+        return await call_next(request)
+
+
+app.add_middleware(
+    PaymentMiddlewareASGI,
+    routes=routes,
+    server=server,
+    paywall_provider=paywall,
+    paywall_config=PaywallConfig(app_name="x402 Agent Store", testnet=testnet),
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["PAYMENT-REQUIRED, PAYMENT-RESPONSE, PAYMENT-SIGNATURE"],
+)
+app.add_middleware(CoinbaseWalletCompatMiddleware)
+
+
+def _storefront_html() -> str:
+    ready = settlement_ready(settings)
+    warning = ""
+    if not ready:
+        warning = """
+        <p style="padding:1rem;background:#fef3c7;border-radius:8px">
+          <strong>Why Coinbase Wallet says insufficient funds:</strong>
+          your USDC is on <em>Base mainnet</em>. This shop is still on
+          <em>Base Sepolia</em> because <code>X402_PAY_TO</code> is a placeholder.
+          Put your Base wallet in <code>.env</code> and restart to accept real $0.01 USDC.
+        </p>
+        """
+    items = "\n".join(
+        f"<li><a href=\"{product.path}?url=https://example.com\"><strong>{product.price}</strong> {product.name}</a> — {product.description}</li>"
+        for product in PRODUCTS
+    )
+    networks = ", ".join(settings.networks())
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>x402 Agent Store</title>
+</head>
+<body style="font-family:system-ui;max-width:44rem;margin:3rem auto;padding:0 1rem;line-height:1.5">
+  <h1>x402 Agent Store</h1>
+  <p>Penny SKUs for AI agents. Pay USDC over HTTP 402. Free catalog: <a href="/v1/catalog"><code>GET /v1/catalog</code></a>.</p>
+  {warning}
+  <p>Networks: <code>{networks}</code>. Pay to <code>{settings.x402_pay_to}</code>.</p>
+  <p>Use <strong>Chrome or Edge</strong> for Coinbase Smart Wallet (not an embedded browser).</p>
+  <h2>Products</h2>
+  <ul>{items}</ul>
+</body>
+</html>
+"""
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index() -> str:
+    return _storefront_html()
+
+
+@app.get("/health")
+async def health() -> dict[str, object]:
+    return {
+        "status": "ok",
+        "settlement_ready": settlement_ready(settings),
+        "networks": settings.networks(),
+        "product_count": len(PRODUCTS),
+    }
+
+
+@app.get("/v1/catalog")
+async def catalog() -> dict:
+    return public_catalog(settings.x402_pay_to, settings.networks(), settlement_ready(settings))
+
+
+async def _page(url: str, pay_for_source: bool = True):
+    try:
+        return await fetch_page(url, settings, pay_for_source=pay_for_source)
+    except ScrapeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@app.get("/v1/scrape", response_model=ScrapeResponse)
+@app.get("/scrape", response_model=ScrapeResponse)
+async def scrape_get(url: str = Query(...), pay_for_source: bool = Query(True)) -> ScrapeResponse:
+    page = await _page(url, pay_for_source)
+    return ScrapeResponse(
+        url=page.url,
+        title=page.title,
+        markdown=page.markdown,
+        source_status=page.source_status,
+        paid_source=page.paid_source,
+    )
+
+
+@app.post("/scrape", response_model=ScrapeResponse)
+async def scrape_post(body: ScrapeRequest) -> ScrapeResponse:
+    page = await _page(str(body.url), body.pay_for_source)
+    return ScrapeResponse(
+        url=page.url,
+        title=page.title,
+        markdown=page.markdown,
+        source_status=page.source_status,
+        paid_source=page.paid_source,
+    )
+
+
+@app.get("/v1/title", response_model=TitleResponse)
+async def title_get(url: str = Query(...)) -> TitleResponse:
+    page = await _page(url)
+    return TitleResponse(
+        url=page.url,
+        title=page.title,
+        description=page.description,
+        source_status=page.source_status,
+    )
+
+
+@app.get("/v1/text", response_model=TextResponse)
+async def text_get(url: str = Query(...)) -> TextResponse:
+    page = await _page(url)
+    return TextResponse(url=page.url, text=page.text, source_status=page.source_status)
+
+
+@app.get("/v1/outline", response_model=OutlineResponse)
+async def outline_get(url: str = Query(...)) -> OutlineResponse:
+    page = await _page(url)
+    return OutlineResponse(url=page.url, headings=page.headings, source_status=page.source_status)
+
+
+@app.get("/v1/links", response_model=LinksResponse)
+async def links_get(url: str = Query(...)) -> LinksResponse:
+    page = await _page(url)
+    return LinksResponse(url=page.url, links=page.links, source_status=page.source_status)
