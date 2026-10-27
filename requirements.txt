@@ -7,6 +7,7 @@ markdownify>=0.14.1
 pydantic-settings>=2.6.0
 python-dotenv>=1.0.1
 x402>=2.0.0
+cdp-sdk>=1.33.0
 jsonschema>=4.23.0
 eth-abi>=6.0.0
 eth-account>=0.13.0

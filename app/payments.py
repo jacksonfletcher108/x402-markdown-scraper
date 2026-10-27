@@ -1,3 +1,5 @@
+import os
+
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
 from x402.http.types import RouteConfig
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
@@ -53,15 +55,22 @@ def paid_routes(settings: Settings) -> dict[str, RouteConfig]:
 
 def resource_server(settings: Settings) -> x402ResourceServer:
     networks = settings.networks()
-    urls: list[str] = []
-    if MAINNET in networks:
-        urls.append(settings.facilitator_url)
-    if SEPOLIA in networks and settings.sepolia_facilitator_url not in urls:
-        urls.append(settings.sepolia_facilitator_url)
-    if not urls:
-        urls.append(settings.sepolia_facilitator_url)
+    if settings.uses_cdp():
+        os.environ["CDP_API_KEY_ID"] = settings.cdp_api_key_id or ""
+        os.environ["CDP_API_KEY_SECRET"] = settings.cdp_api_key_secret or ""
+        from cdp.x402 import create_facilitator_config
 
-    clients = [HTTPFacilitatorClient(FacilitatorConfig(url=url)) for url in urls]
+        clients = [HTTPFacilitatorClient(create_facilitator_config())]
+    else:
+        urls: list[str] = []
+        if MAINNET in networks:
+            urls.append(settings.facilitator_url)
+        if SEPOLIA in networks and settings.sepolia_facilitator_url not in urls:
+            urls.append(settings.sepolia_facilitator_url)
+        if not urls:
+            urls.append(settings.sepolia_facilitator_url)
+        clients = [HTTPFacilitatorClient(FacilitatorConfig(url=url)) for url in urls]
+
     server = x402ResourceServer(clients)
     for network in networks:
         server.register(network, ExactEvmServerScheme())

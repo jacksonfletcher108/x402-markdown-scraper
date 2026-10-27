@@ -17,3 +17,7 @@ services:
         value: https://facilitator.payai.network
       - key: SEPOLIA_FACILITATOR_URL
         value: https://x402.org/facilitator
+      - key: CDP_API_KEY_ID
+        sync: false
+      - key: CDP_API_KEY_SECRET
+        sync: false

@@ -13,6 +13,7 @@ MAINNET: Network = "eip155:8453"
 SEPOLIA: Network = "eip155:84532"
 MAINNET_FACILITATOR = "https://facilitator.payai.network"
 SEPOLIA_FACILITATOR = "https://x402.org/facilitator"
+CDP_FACILITATOR = "https://api.cdp.coinbase.com/platform/v2/x402"
 
 
 def is_placeholder_pay_to(address: str) -> bool:
@@ -38,6 +39,8 @@ class Settings(BaseSettings):
     x402_price: str = "$0.01"
     facilitator_url: str = MAINNET_FACILITATOR
     sepolia_facilitator_url: str = SEPOLIA_FACILITATOR
+    cdp_api_key_id: str | None = None
+    cdp_api_key_secret: str | None = None
     evm_private_key: str | None = None
     host: str = "0.0.0.0"
     port: int = 4021
@@ -50,6 +53,12 @@ class Settings(BaseSettings):
             # Do not accept real USDC until a real receiving wallet is configured.
             return [SEPOLIA]
         return requested or [MAINNET]
+
+    def uses_cdp(self) -> bool:
+        return bool(self.cdp_api_key_id and self.cdp_api_key_secret)
+
+    def facilitator_kind(self) -> str:
+        return "cdp" if self.uses_cdp() else "payai"
 
 
 @lru_cache

@@ -125,6 +125,7 @@ async def health() -> dict[str, object]:
     return {
         "status": "ok",
         "settlement_ready": settlement_ready(settings),
+        "facilitator": settings.facilitator_kind(),
         "networks": settings.networks(),
         "product_count": len(PRODUCTS),
     }
