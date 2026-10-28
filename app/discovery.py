@@ -22,6 +22,7 @@ def llms_txt(settings: Settings) -> str:
         f"- [Health]({PUBLIC_HOST}/health): GET /health — keep-alive liveness",
         f"- [Catalog]({PUBLIC_HOST}/v1/catalog): GET /v1/catalog — machine-readable SKUs",
         f"- [OpenAPI]({PUBLIC_HOST}/openapi.json): GET /openapi.json — request/response schemas",
+        f"- [MCP server]({PUBLIC_HOST}/mcp): POST /mcp — Streamable HTTP MCP; tools/call paid via x402 in _meta",
         f"- [MCP]({PUBLIC_HOST}/.well-known/mcp): GET /.well-known/mcp — agent tool card",
         f"- [Plugin]({PUBLIC_HOST}/.well-known/ai-plugin.json): GET /.well-known/ai-plugin.json",
         f"- [llms.txt]({PUBLIC_HOST}/llms.txt): this file",
@@ -73,6 +74,8 @@ def mcp_manifest(settings: Settings) -> dict:
         "x402Version": 2,
         "category": "Data",
         "homepage": PUBLIC_HOST,
+        "mcpEndpoint": f"{PUBLIC_HOST}/mcp",
+        "transport": "streamable-http",
         "auth": {
             "type": "x402",
             "scheme": "exact",

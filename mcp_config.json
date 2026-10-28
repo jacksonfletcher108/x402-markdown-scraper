@@ -15,12 +15,11 @@
     "network": "eip155:8453",
     "payTo": "0xf84EF3669eA39b87D4a850B4510f7aCBAC19be5f"
   },
+  "mcpEndpoint": "https://x402-markdown-scraper.onrender.com/mcp",
   "mcpServers": {
     "x402-markdown-scraper": {
-      "url": "https://x402-markdown-scraper.onrender.com/.well-known/mcp",
-      "headers": {
-        "Accept": "application/json"
-      }
+      "type": "http",
+      "url": "https://x402-markdown-scraper.onrender.com/mcp"
     }
   },
   "tools": [

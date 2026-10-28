@@ -10,6 +10,7 @@ Base: https://x402-markdown-scraper.onrender.com
 - [Health](https://x402-markdown-scraper.onrender.com/health): GET /health — keep-alive liveness
 - [Catalog](https://x402-markdown-scraper.onrender.com/v1/catalog): GET /v1/catalog — machine-readable SKUs
 - [OpenAPI](https://x402-markdown-scraper.onrender.com/openapi.json): GET /openapi.json — request/response schemas
+- [MCP server](https://x402-markdown-scraper.onrender.com/mcp): POST /mcp — Streamable HTTP MCP; tools/call paid via x402 in _meta
 - [MCP](https://x402-markdown-scraper.onrender.com/.well-known/mcp): GET /.well-known/mcp — agent tool card
 - [Plugin](https://x402-markdown-scraper.onrender.com/.well-known/ai-plugin.json): GET /.well-known/ai-plugin.json
 - [llms.txt](https://x402-markdown-scraper.onrender.com/llms.txt): this file
