@@ -2,8 +2,12 @@ from app.compat import install_optional_stubs
 
 install_optional_stubs()
 
+import logging
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
+from fastapi.responses import PlainTextResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, Response
@@ -13,6 +17,7 @@ from x402.http.types import PaywallConfig
 
 from app.catalog import PRODUCTS, public_catalog
 from app.config import get_settings
+from app.discovery import llms_txt, x402_openapi_extension
 from app.models import (
     LinksResponse,
     OutlineResponse,
@@ -23,16 +28,32 @@ from app.models import (
 )
 from app.payments import paid_routes, paywall_is_testnet, resource_server, settlement_ready
 from app.scraper import ScrapeError, fetch_page
+from app.x402_log import X402TraceMiddleware, attach_payment_logs
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+log = logging.getLogger("x402.shop")
 
 settings = get_settings()
-
-app = FastAPI(
-    title="x402 Agent Store",
-    description="Penny-priced web extraction APIs for AI agents, charged in USDC via x402.",
-    version="0.2.0",
+log.info(
+    "x402 shop starting pay_to=%s networks=%s facilitator=%s",
+    settings.pay_to(),
+    settings.networks(),
+    settings.facilitator_kind(),
 )
 
-server = resource_server(settings)
+app = FastAPI(
+    title="x402 Markdown Scraper",
+    description=(
+        "Penny-priced web extraction APIs for AI agents. "
+        "Paid routes charge Exact EVM USDC on Base (eip155:8453) via x402. "
+        "Primary SKU: GET /v1/scrape?url= costs $0.01 USDC. "
+        "Unpaid calls return HTTP 402 with a PAYMENT-REQUIRED header. "
+        "Free discovery: GET /health, GET /llms.txt, GET /openapi.json, GET /v1/catalog."
+    ),
+    version="0.3.0",
+)
+
+server = attach_payment_logs(resource_server(settings))
 routes = paid_routes(settings)
 testnet = paywall_is_testnet(settings)
 paywall = (
@@ -68,6 +89,7 @@ app.add_middleware(
     paywall_provider=paywall,
     paywall_config=PaywallConfig(app_name="x402 Agent Store", testnet=testnet),
 )
+app.add_middleware(X402TraceMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -87,7 +109,7 @@ def _storefront_html() -> str:
           <strong>Why Coinbase Wallet says insufficient funds:</strong>
           your USDC is on <em>Base mainnet</em>. This shop is still on
           <em>Base Sepolia</em> because <code>X402_PAY_TO</code> is a placeholder.
-          Put your Base wallet in <code>.env</code> and restart to accept real $0.01 USDC.
+          Put your Base wallet in <code>PAYMENT_WALLET_ADDRESS</code> and restart to accept real $0.01 USDC.
         </p>
         """
     items = "\n".join(
@@ -106,7 +128,7 @@ def _storefront_html() -> str:
   <h1>x402 Agent Store</h1>
   <p>Penny SKUs for AI agents. Pay USDC over HTTP 402. Free catalog: <a href="/v1/catalog"><code>GET /v1/catalog</code></a>.</p>
   {warning}
-  <p>Networks: <code>{networks}</code>. Pay to <code>{settings.x402_pay_to}</code>.</p>
+  <p>Networks: <code>{networks}</code>. Pay to <code>{settings.pay_to()}</code>.</p>
   <p>Use <strong>Chrome or Edge</strong> for Coinbase Smart Wallet (not an embedded browser).</p>
   <h2>Products</h2>
   <ul>{items}</ul>
@@ -121,19 +143,19 @@ async def index() -> str:
 
 
 @app.get("/health")
-async def health() -> dict[str, object]:
-    return {
-        "status": "ok",
-        "settlement_ready": settlement_ready(settings),
-        "facilitator": settings.facilitator_kind(),
-        "networks": settings.networks(),
-        "product_count": len(PRODUCTS),
-    }
+async def health() -> dict[str, str]:
+    """Unpaid keep-alive probe. Do not put work here."""
+    return {"status": "ok"}
+
+
+@app.get("/llms.txt", response_class=PlainTextResponse, include_in_schema=True)
+async def llms() -> str:
+    return llms_txt(settings)
 
 
 @app.get("/v1/catalog")
 async def catalog() -> dict:
-    return public_catalog(settings.x402_pay_to, settings.networks(), settlement_ready(settings))
+    return public_catalog(settings.pay_to(), settings.networks(), settlement_ready(settings))
 
 
 async def _page(url: str, pay_for_source: bool = True):
@@ -145,7 +167,10 @@ async def _page(url: str, pay_for_source: bool = True):
 
 @app.get("/v1/scrape", response_model=ScrapeResponse)
 @app.get("/scrape", response_model=ScrapeResponse)
-async def scrape_get(url: str = Query(...), pay_for_source: bool = Query(True)) -> ScrapeResponse:
+async def scrape_get(
+    url: str = Query(..., description="Public http(s) URL to fetch."),
+    pay_for_source: bool = Query(True),
+) -> ScrapeResponse:
     page = await _page(url, pay_for_source)
     return ScrapeResponse(
         url=page.url,
@@ -169,7 +194,7 @@ async def scrape_post(body: ScrapeRequest) -> ScrapeResponse:
 
 
 @app.get("/v1/title", response_model=TitleResponse)
-async def title_get(url: str = Query(...)) -> TitleResponse:
+async def title_get(url: str = Query(..., description="Public http(s) URL to fetch.")) -> TitleResponse:
     page = await _page(url)
     return TitleResponse(
         url=page.url,
@@ -180,18 +205,68 @@ async def title_get(url: str = Query(...)) -> TitleResponse:
 
 
 @app.get("/v1/text", response_model=TextResponse)
-async def text_get(url: str = Query(...)) -> TextResponse:
+async def text_get(url: str = Query(..., description="Public http(s) URL to fetch.")) -> TextResponse:
     page = await _page(url)
     return TextResponse(url=page.url, text=page.text, source_status=page.source_status)
 
 
 @app.get("/v1/outline", response_model=OutlineResponse)
-async def outline_get(url: str = Query(...)) -> OutlineResponse:
+async def outline_get(url: str = Query(..., description="Public http(s) URL to fetch.")) -> OutlineResponse:
     page = await _page(url)
     return OutlineResponse(url=page.url, headings=page.headings, source_status=page.source_status)
 
 
 @app.get("/v1/links", response_model=LinksResponse)
-async def links_get(url: str = Query(...)) -> LinksResponse:
+async def links_get(url: str = Query(..., description="Public http(s) URL to fetch.")) -> LinksResponse:
     page = await _page(url)
     return LinksResponse(url=page.url, links=page.links, source_status=page.source_status)
+
+
+_PAID_OPENAPI_PATHS = {
+    "/v1/scrape": "$0.01",
+    "/scrape": "$0.01",
+    "/v1/title": "$0.001",
+    "/v1/text": "$0.005",
+    "/v1/outline": "$0.005",
+    "/v1/links": "$0.005",
+}
+
+
+def custom_openapi() -> dict:
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    schema["info"]["x-x402"] = x402_openapi_extension(settings)
+    payment_required = {
+        "description": "Payment required. Read PAYMENT-REQUIRED and retry with PAYMENT-SIGNATURE.",
+        "headers": {
+            "PAYMENT-REQUIRED": {
+                "schema": {"type": "string"},
+                "description": "Base64 x402 PaymentRequired (v2).",
+            }
+        },
+    }
+    for path, price in _PAID_OPENAPI_PATHS.items():
+        item = schema.get("paths", {}).get(path)
+        if not item:
+            continue
+        for operation in item.values():
+            if not isinstance(operation, dict):
+                continue
+            operation.setdefault("responses", {})["402"] = payment_required
+            operation["x-x402"] = {
+                "price": price,
+                "asset": "USDC",
+                "network": "eip155:8453",
+                "scheme": "exact",
+            }
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = custom_openapi

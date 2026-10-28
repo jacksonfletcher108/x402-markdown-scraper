@@ -33,7 +33,9 @@ def is_usable_pay_to(address: str) -> bool:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    x402_pay_to: str
+    # Preferred Render name. X402_PAY_TO remains a fallback for existing deploys.
+    payment_wallet_address: str = ""
+    x402_pay_to: str = ""
     # Comma-separated CAIP-2 ids. Mainnet first so Coinbase Wallet USDC matches.
     x402_networks: str = f"{MAINNET},{SEPOLIA}"
     x402_price: str = "$0.01"
@@ -49,10 +51,17 @@ class Settings(BaseSettings):
 
     def networks(self) -> list[Network]:
         requested = [item.strip() for item in self.x402_networks.split(",") if item.strip()]
-        if not is_usable_pay_to(self.x402_pay_to):
+        if not is_usable_pay_to(self.pay_to()):
             # Do not accept real USDC until a real receiving wallet is configured.
             return [SEPOLIA]
         return requested or [MAINNET]
+
+    def pay_to(self) -> str:
+        for candidate in (self.payment_wallet_address, self.x402_pay_to):
+            value = candidate.strip()
+            if value:
+                return value
+        return "0x0000000000000000000000000000000000000000"
 
     def uses_cdp(self) -> bool:
         return bool(self.cdp_api_key_id and self.cdp_api_key_secret)

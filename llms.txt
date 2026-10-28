@@ -1,0 +1,29 @@
+# x402 Markdown Scraper
+
+> Penny-priced page extraction APIs for AI agents.
+> Pay USDC on Base (eip155:8453) over HTTP 402 (x402 v2).
+
+Base: https://x402-markdown-scraper.onrender.com
+
+## Free (no payment)
+
+- [Health](https://x402-markdown-scraper.onrender.com/health): GET /health — keep-alive liveness
+- [Catalog](https://x402-markdown-scraper.onrender.com/v1/catalog): GET /v1/catalog — machine-readable SKUs
+- [OpenAPI](https://x402-markdown-scraper.onrender.com/openapi.json): GET /openapi.json — request/response schemas
+- [llms.txt](https://x402-markdown-scraper.onrender.com/llms.txt): this file
+
+## Paid (x402)
+
+Call a paid path without PAYMENT-SIGNATURE to receive HTTP 402 and PAYMENT-REQUIRED.
+Retry the same URL with PAYMENT-SIGNATURE to settle Exact EVM USDC.
+
+- [Markdown scrape](https://x402-markdown-scraper.onrender.com/v1/scrape?url=https://example.com): GET /v1/scrape?url= — $0.01 USDC. Fetch a public URL and return clean markdown for agents.
+- [Title + description](https://x402-markdown-scraper.onrender.com/v1/title?url=https://example.com): GET /v1/title?url= — $0.001 USDC. Return the page title and meta description only.
+- [Plain text](https://x402-markdown-scraper.onrender.com/v1/text?url=https://example.com): GET /v1/text?url= — $0.005 USDC. Return visible page text without HTML.
+- [Heading outline](https://x402-markdown-scraper.onrender.com/v1/outline?url=https://example.com): GET /v1/outline?url= — $0.005 USDC. Return h1–h3 headings as a document outline.
+- [Outbound links](https://x402-markdown-scraper.onrender.com/v1/links?url=https://example.com): GET /v1/links?url= — $0.005 USDC. Return up to 50 absolute http(s) links from the page.
+
+## Primary SKU
+
+GET https://x402-markdown-scraper.onrender.com/v1/scrape?url={url} costs $0.01 USDC on Base.
+Query: url (uri, required). Optional: pay_for_source (boolean, default true).

@@ -116,7 +116,7 @@ def public_catalog(pay_to: str, networks: list[str], settlement_ready: bool) -> 
         "networks": networks,
         "asset": "USDC",
         "discovery": {
-            "free": ["GET /health", "GET /v1/catalog"],
+            "free": ["GET /health", "GET /llms.txt", "GET /openapi.json", "GET /v1/catalog"],
             "note": "Call a paid path without PAYMENT-SIGNATURE to receive PAYMENT-REQUIRED.",
         },
         "products": [

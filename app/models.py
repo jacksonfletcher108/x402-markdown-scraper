@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, HttpUrl
 
 
 class ScrapeRequest(BaseModel):
-    url: HttpUrl
+    url: HttpUrl = Field(description="Public http(s) URL to fetch.")
     pay_for_source: bool = Field(
         default=True,
         description="If the source returns HTTP 402, attach x402 payment headers and retry.",

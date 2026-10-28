@@ -9,6 +9,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.8"
+      - key: PAYMENT_WALLET_ADDRESS
+        sync: false
       - key: X402_PAY_TO
         sync: false
       - key: X402_NETWORKS

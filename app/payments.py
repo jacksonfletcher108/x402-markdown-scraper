@@ -13,7 +13,7 @@ def payment_options(settings: Settings, price: str) -> list[PaymentOption]:
     return [
         PaymentOption(
             scheme="exact",
-            pay_to=settings.x402_pay_to,
+            pay_to=settings.pay_to(),
             price=price,
             network=network,
         )
@@ -82,4 +82,4 @@ def paywall_is_testnet(settings: Settings) -> bool:
 
 
 def settlement_ready(settings: Settings) -> bool:
-    return is_usable_pay_to(settings.x402_pay_to)
+    return is_usable_pay_to(settings.pay_to())
