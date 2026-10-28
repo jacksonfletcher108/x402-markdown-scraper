@@ -199,6 +199,7 @@ class DiscoveryRouteTests(unittest.TestCase):
         self.assertIn('id="pg-wc" data-project-id="abc123"', page)
         self.assertIn("@walletconnect/ethereum-provider@2.26.0", page)
         self.assertIn('id="pg-steps" hidden', page)
+        self.assertIn('id="pg-wc"', self.client.get("/").text)
 
     def test_swagger_docs_unpaid(self) -> None:
         response = self.client.get("/docs")
