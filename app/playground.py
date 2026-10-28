@@ -32,6 +32,7 @@ PLAYGROUND_CSS = """
     .pg-btn.ghost { background:#fff; color:var(--ink); border:1px solid var(--line); }
     .pg-btn:disabled { opacity:.55; cursor:progress; }
     .pg-account { font-size:.85rem; color:var(--muted); font-family:ui-monospace,monospace; }
+    .pg-hint { margin:.5rem 0 0; font-size:.8rem; color:var(--muted); }
     .pg-steps[hidden] { display:none; }
     .pg-steps { list-style:none; display:flex; flex-wrap:wrap; gap:.4rem; padding:0; margin:1rem 0 .4rem; }
     .pg-steps li { font-size:.8rem; padding:.2rem .6rem; border-radius:999px; background:#f1f5f9; color:var(--muted); }
@@ -385,6 +386,12 @@ def playground_html(products: tuple[Product, ...], walletconnect_project_id: str
             '<button type="button" class="pg-btn ghost" id="pg-wc" '
             f'data-project-id="{html.escape(walletconnect_project_id)}">WalletConnect (QR)</button>'
         )
+    wc_hint = (
+        '<p class="pg-hint">Scan the QR from inside your wallet app (Base, MetaMask, Rainbow), '
+        "not your phone camera or the Coinbase exchange app.</p>"
+        if walletconnect_project_id
+        else ""
+    )
     options = []
     for product in products:
         label = PLAYGROUND_LABELS.get(product.sku)
@@ -411,6 +418,7 @@ def playground_html(products: tuple[Product, ...], walletconnect_project_id: str
         <button type="button" class="pg-btn primary" id="pg-run">Scrape ($0.01)</button>
         <span class="pg-account" id="pg-account"></span>
       </div>
+      {wc_hint}
       <div class="pg-nowallet" id="pg-nowallet" hidden>
         <strong>No browser wallet detected</strong>
         <p id="pg-nowallet-text"></p>
