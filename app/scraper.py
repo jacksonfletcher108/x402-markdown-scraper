@@ -103,7 +103,14 @@ async def fetch_page(
     pay_for_source: bool = True,
 ) -> PageExtract:
     url = validate_url(url)
-    response, paid_source = await _fetch_with_optional_payment(url, settings, pay_for_source)
+    try:
+        response, paid_source = await _fetch_with_optional_payment(url, settings, pay_for_source)
+    except httpx.TimeoutException as exc:
+        raise ScrapeError("Timed out fetching URL", status_code=504) from exc
+    except httpx.TooManyRedirects as exc:
+        raise ScrapeError("Too many redirects from source URL", status_code=502) from exc
+    except httpx.RequestError as exc:
+        raise ScrapeError(f"Could not fetch URL: {exc.__class__.__name__}", status_code=502) from exc
 
     if response.status_code == 402:
         raise ScrapeError(
@@ -117,21 +124,28 @@ async def fetch_page(
             status_code=502,
         )
 
+    final_url = str(response.url)
+    validate_url(final_url)
+
     content_type = response.headers.get("content-type", "")
     raw = response.content[: settings.max_html_bytes]
     text = raw.decode(response.encoding or "utf-8", errors="replace")
-    final_url = str(response.url)
 
-    if "html" in content_type or text.lstrip().startswith("<"):
-        page = parse_html(text, final_url)
-    else:
-        page = PageExtract(
-            url=final_url,
-            title=None,
-            description=None,
-            markdown=text.strip(),
-            text=text.strip(),
-        )
+    try:
+        if "html" in content_type.lower() or text.lstrip().startswith("<"):
+            page = parse_html(text, final_url)
+        else:
+            page = PageExtract(
+                url=final_url,
+                title=None,
+                description=None,
+                markdown=text.strip() or f"Fetched {final_url} but found no extractable text.",
+                text=text.strip(),
+            )
+    except ScrapeError:
+        raise
+    except Exception as exc:
+        raise ScrapeError("Failed to parse page content", status_code=502) from exc
     page.source_status = response.status_code
     page.paid_source = paid_source
     return page

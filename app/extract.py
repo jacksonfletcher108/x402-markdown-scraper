@@ -190,13 +190,17 @@ def parse_html(html: str, url: str) -> PageExtract:
             break
 
     body = soup.body or soup
-    markdown = html_to_markdown(
-        str(body),
-        heading_style="ATX",
-        bullets="-",
-        strip=["img"],
-    ).strip() or f"Fetched {url} but found no extractable text."
     text = body.get_text("\n", strip=True)
+    try:
+        markdown = html_to_markdown(
+            str(body),
+            heading_style="ATX",
+            bullets="-",
+            strip=["img"],
+        ).strip()
+    except Exception:
+        markdown = ""
+    markdown = markdown or text.strip() or f"Fetched {url} but found no extractable text."
     words, minutes = word_stats(text)
 
     return PageExtract(

@@ -90,12 +90,19 @@ app.add_middleware(
     paywall_config=PaywallConfig(app_name="x402 Agent Store", testnet=testnet),
 )
 app.add_middleware(X402TraceMiddleware)
+_X402_HEADERS = [
+    "PAYMENT-REQUIRED",
+    "PAYMENT-RESPONSE",
+    "PAYMENT-SIGNATURE",
+    "X-PAYMENT",
+    "X-PAYMENT-RESPONSE",
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["PAYMENT-REQUIRED, PAYMENT-RESPONSE, PAYMENT-SIGNATURE"],
+    allow_headers=["*", *_X402_HEADERS, "Content-Type", "Accept"],
+    expose_headers=_X402_HEADERS,
 )
 app.add_middleware(CoinbaseWalletCompatMiddleware)
 
@@ -174,6 +181,11 @@ async def _page(url: str, pay_for_source: bool = True):
         return await fetch_page(url, settings, pay_for_source=pay_for_source)
     except ScrapeError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception("unexpected fetch failure")
+        raise HTTPException(status_code=502, detail="Failed to fetch or parse the page") from exc
 
 
 @app.get("/v1/scrape", response_model=ScrapeResponse)
