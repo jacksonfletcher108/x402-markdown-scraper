@@ -2,6 +2,40 @@
 
 Penny-priced extraction APIs for AI agents. Buyers pay **USDC** over [x402](https://www.x402.org/) (`402` + `PAYMENT-REQUIRED` / `PAYMENT-SIGNATURE`).
 
+## Use it
+
+| SKU | Price (USDC on Base) | Path / MCP tool |
+|---|---|---|
+| Page → clean Markdown | $0.01 | `/v1/scrape` · `scrape_md` |
+| 3-bullet summary + Markdown | $0.02 | `/v1/summary` · `page_summary` |
+| Metadata (Open Graph, JSON-LD, author, date) | $0.01 | `/v1/extract-metadata` · `page_metadata` |
+| PDF URL → structured Markdown | $0.05 | `/v1/parse-pdf` · `doc_pdf` |
+| Same-host crawl, depth 1–3 | $0.15 | `/v1/deep-crawl` · `site_crawl` |
+
+No account or API key: your agent pays from its own Base wallet (USDC only, no ETH for gas).
+
+- **Browser:** try every SKU with a wallet at https://x402-markdown-scraper.onrender.com/#playground
+- **Python:** `pip install x402-scraper`, set `EVM_PRIVATE_KEY` to a dedicated wallet holding a few dollars of USDC.
+
+```python
+# LangChain
+from langchain_core.tools import StructuredTool
+from x402_scraper import ScraperClient
+client = ScraperClient()  # signs USDC on Base with EVM_PRIVATE_KEY
+scrape = StructuredTool.from_function(coroutine=client.scrape, name="scrape_url", description="Fetch any URL as clean Markdown ($0.01 USDC on Base).")
+```
+
+```python
+# LlamaIndex
+from llama_index.core.tools import FunctionTool
+from x402_scraper import ScraperClient
+client = ScraperClient()  # signs USDC on Base with EVM_PRIVATE_KEY
+parse_pdf = FunctionTool.from_defaults(async_fn=client.parse_pdf, name="parse_pdf", description="Convert a PDF URL to structured Markdown ($0.05 USDC on Base).")
+```
+
+- **MCP:** Streamable HTTP at `https://x402-markdown-scraper.onrender.com/mcp`. Any client can `initialize` and `tools/list`; paid `tools/call` needs an x402-aware MCP client (payment in `params._meta["x402/payment"]`). Clients without x402 support, such as Claude Desktop and Cursor today, receive the `PaymentRequired` object instead of a result.
+- **Agents:** [`/llms.txt`](https://x402-markdown-scraper.onrender.com/llms.txt) · [`/openapi.json`](https://x402-markdown-scraper.onrender.com/openapi.json) · [`/.well-known/mcp`](https://x402-markdown-scraper.onrender.com/.well-known/mcp)
+
 ## Why Coinbase Wallet said insufficient funds
 
 Coinbase Wallet USDC is **Base mainnet**. This shop stayed on **Base Sepolia** while `X402_PAY_TO` was a placeholder, so the wallet checked the wrong token and reported no balance.
