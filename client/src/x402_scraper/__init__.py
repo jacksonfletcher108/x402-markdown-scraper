@@ -3,4 +3,4 @@
 from x402_scraper.client import DEFAULT_BASE_URL, BASE_NETWORK, ScraperClient
 
 __all__ = ["DEFAULT_BASE_URL", "BASE_NETWORK", "ScraperClient"]
-__version__ = "0.5.0"
+__version__ = "0.5.1"

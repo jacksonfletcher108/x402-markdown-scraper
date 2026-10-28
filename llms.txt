@@ -1,9 +1,12 @@
-# x402 Markdown Scraper
+# x402 Web Markdown Scraper
 
-> Converts any web article URL into clean, stripped Markdown for AI context windows.
-> Pay $0.01 USDC on Base (eip155:8453) over HTTP 402 (x402 v2). Category: Data.
+> Pay-per-request web scraping API and MCP server for AI agents: any URL or PDF to clean Markdown.
+> Pay USDC on Base (eip155:8453) over HTTP 402 (x402 v2). No account or API key. Category: Data.
+> Full reference with schemas and payment payloads: https://x402-markdown-scraper.onrender.com/llms-full.txt
 
 Base: https://x402-markdown-scraper.onrender.com
+Pay to: 0xf84EF3669eA39b87D4a850B4510f7aCBAC19be5f
+Asset: USDC on Base. Networks: eip155:8453, eip155:84532
 
 ## Free (no payment)
 
@@ -14,6 +17,9 @@ Base: https://x402-markdown-scraper.onrender.com
 - [MCP](https://x402-markdown-scraper.onrender.com/.well-known/mcp): GET /.well-known/mcp — agent tool card
 - [Plugin](https://x402-markdown-scraper.onrender.com/.well-known/ai-plugin.json): GET /.well-known/ai-plugin.json
 - [llms.txt](https://x402-markdown-scraper.onrender.com/llms.txt): this file
+- [llms-full.txt](https://x402-markdown-scraper.onrender.com/llms-full.txt): full reference — schemas, x402 headers, sample payloads, USDC contract
+- [Playground](https://x402-markdown-scraper.onrender.com/#playground): try every SKU from a browser wallet
+- Python client: `pip install x402-scraper`
 
 ## Paid (x402)
 
@@ -21,19 +27,24 @@ Call a paid path without PAYMENT-SIGNATURE to receive HTTP 402 and PAYMENT-REQUI
 Retry the same URL with PAYMENT-SIGNATURE to settle Exact EVM USDC.
 
 - [Markdown scrape](https://x402-markdown-scraper.onrender.com/v1/scrape?url=https://example.com): GET /v1/scrape?url= — $0.01 USDC. Converts any web article URL into clean, stripped Markdown for AI context windows.
-- [Executive summary](https://x402-markdown-scraper.onrender.com/v1/summary?url=https://example.com): GET/POST /v1/summary — $0.02 USDC. Scrape a URL and return a 3-bullet executive summary plus clean Markdown.
-- [Page metadata](https://x402-markdown-scraper.onrender.com/v1/extract-metadata?url=https://example.com): GET/POST /v1/extract-metadata — $0.01 USDC. Extract Open Graph, Schema.org JSON-LD, author, publish date, word count, and reading time.
-- [PDF to markdown](https://x402-markdown-scraper.onrender.com/v1/parse-pdf?url=https://example.com/paper.pdf): GET/POST /v1/parse-pdf — $0.05 USDC. Fetch a PDF URL and return stripped structured Markdown.
-- [Deep site crawl](https://x402-markdown-scraper.onrender.com/v1/deep-crawl?url=https://example.com): GET/POST /v1/deep-crawl — $0.15 USDC. Crawl internal links up to 3 levels into a document map.
+- [Executive summary](https://x402-markdown-scraper.onrender.com/v1/summary?url=https://example.com): GET /v1/summary?url= — $0.02 USDC. Scrape a URL and return a 3-bullet executive summary plus clean Markdown.
+- [Page metadata](https://x402-markdown-scraper.onrender.com/v1/extract-metadata?url=https://example.com): GET /v1/extract-metadata?url= — $0.01 USDC. Extract Open Graph, Schema.org JSON-LD, author, publish date, word count, and reading time.
+- [PDF to markdown](https://x402-markdown-scraper.onrender.com/v1/parse-pdf?url=https://example.com/paper.pdf): GET /v1/parse-pdf?url= — $0.05 USDC. Fetch a PDF URL and return stripped, structured Markdown of the document text.
+- [Deep site crawl](https://x402-markdown-scraper.onrender.com/v1/deep-crawl?url=https://example.com&max_depth=2): GET /v1/deep-crawl?url= — $0.15 USDC. Crawl a starting URL up to 3 internal levels and return a structured multi-page document map.
 - [Title + description](https://x402-markdown-scraper.onrender.com/v1/title?url=https://example.com): GET /v1/title?url= — $0.001 USDC. Return the page title and meta description only.
 - [Plain text](https://x402-markdown-scraper.onrender.com/v1/text?url=https://example.com): GET /v1/text?url= — $0.005 USDC. Return visible page text without HTML.
-- [Heading outline](https://x402-markdown-scraper.onrender.com/v1/outline?url=https://example.com): GET /v1/outline?url= — $0.005 USDC. Return h1–h3 headings as a document outline.
+- [Heading outline](https://x402-markdown-scraper.onrender.com/v1/outline?url=https://example.com): GET /v1/outline?url= — $0.005 USDC. Return h1-h3 headings as a document outline.
 - [Outbound links](https://x402-markdown-scraper.onrender.com/v1/links?url=https://example.com): GET /v1/links?url= — $0.005 USDC. Return up to 50 absolute http(s) links from the page.
 
 ## Primary SKU
 
-GET/POST https://x402-markdown-scraper.onrender.com/v1/scrape costs $0.01 USDC. Query or JSON `{"url":"..."}`.
-GET/POST https://x402-markdown-scraper.onrender.com/v1/summary costs $0.02 USDC.
-GET/POST https://x402-markdown-scraper.onrender.com/v1/extract-metadata costs $0.01 USDC.
-GET/POST https://x402-markdown-scraper.onrender.com/v1/parse-pdf costs $0.05 USDC.
-GET/POST https://x402-markdown-scraper.onrender.com/v1/deep-crawl costs $0.15 USDC (max_depth 1-3).
+GET/POST https://x402-markdown-scraper.onrender.com/v1/scrape costs $0.01 USDC. Query or JSON body: {"url": "..."}.
+GET/POST https://x402-markdown-scraper.onrender.com/v1/summary costs $0.02 USDC. Returns 3-bullet summary + markdown.
+GET/POST https://x402-markdown-scraper.onrender.com/v1/extract-metadata costs $0.01 USDC. Returns Open Graph, JSON-LD, author, date, word count.
+GET/POST https://x402-markdown-scraper.onrender.com/v1/parse-pdf costs $0.05 USDC. PDF URL to structured Markdown.
+GET/POST https://x402-markdown-scraper.onrender.com/v1/deep-crawl costs $0.15 USDC. Internal crawl, max_depth 1-3.
+
+## Optional SKUs
+
+GET /v1/title $0.001, GET /v1/text $0.005, GET /v1/outline $0.005, GET /v1/links $0.005.
+

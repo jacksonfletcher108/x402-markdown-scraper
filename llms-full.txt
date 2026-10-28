@@ -1,0 +1,507 @@
+# x402 Web Markdown Scraper — full reference
+
+> Pay-per-request web scraping API and MCP server for AI agents. Converts any public URL or PDF into clean
+> Markdown for LLM context windows. Payment is USDC on Base (eip155:8453) over HTTP 402 using the x402 v2
+> `exact` scheme (EIP-3009 TransferWithAuthorization). No account, no API key, no subscription.
+
+## Quick facts
+
+- Base URL: https://x402-markdown-scraper.onrender.com
+- MCP server (Streamable HTTP, stateless): https://x402-markdown-scraper.onrender.com/mcp
+- OpenAPI 3 spec: https://x402-markdown-scraper.onrender.com/openapi.json · Swagger UI: https://x402-markdown-scraper.onrender.com/docs
+- Short manifest: https://x402-markdown-scraper.onrender.com/llms.txt · MCP tool card: https://x402-markdown-scraper.onrender.com/.well-known/mcp
+- Machine catalog: https://x402-markdown-scraper.onrender.com/v1/catalog
+- Browser playground: https://x402-markdown-scraper.onrender.com/#playground
+- Python client: `pip install x402-scraper` (PyPI package `x402-scraper`, import `x402_scraper`)
+- Source: https://github.com/jacksonfletcher108/x402-markdown-scraper
+- Protocol: x402 v2, scheme `exact`, headers PAYMENT-REQUIRED / PAYMENT-SIGNATURE / PAYMENT-RESPONSE
+- Networks accepted: eip155:8453, eip155:84532
+- Asset: USDC (6 decimals) on Base, contract 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+- Pay to: 0xf84EF3669eA39b87D4a850B4510f7aCBAC19be5f
+- Gas: payers sign only; the facilitator submits the transfer, so no ETH is needed.
+
+## Price list
+
+| SKU | Name | Price (USDC) | Atomic amount | HTTP | MCP tool |
+|---|---|---|---|---|---|
+| `scrape.md` | Markdown scrape | $0.01 | 10000 | GET/POST /v1/scrape | `scrape_md` |
+| `page.summary` | Executive summary | $0.02 | 20000 | GET/POST /v1/summary | `page_summary` |
+| `page.metadata` | Page metadata | $0.01 | 10000 | GET/POST /v1/extract-metadata | `page_metadata` |
+| `doc.pdf` | PDF to markdown | $0.05 | 50000 | GET/POST /v1/parse-pdf | `doc_pdf` |
+| `site.crawl` | Deep site crawl | $0.15 | 150000 | GET/POST /v1/deep-crawl | `site_crawl` |
+
+Optional low-cost SKUs: GET /v1/title $0.001, GET /v1/text $0.005, GET /v1/outline $0.005, GET /v1/links $0.005.
+
+## SKUs
+
+### Markdown scrape — $0.01 USDC (`scrape.md`)
+
+Converts any web article URL into clean, stripped Markdown for AI context windows.
+
+- GET https://x402-markdown-scraper.onrender.com/v1/scrape?url=https://example.com
+- POST https://x402-markdown-scraper.onrender.com/v1/scrape with JSON body {"url": "https://example.com"}
+- MCP: `tools/call` name `scrape_md`, arguments {"url": "https://example.com"}
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Public http(s) URL of the article or page to convert."
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "additionalProperties": false
+}
+```
+
+Example 200 response after payment:
+
+```json
+{
+  "sku": "scrape.md",
+  "url": "https://example.com",
+  "title": "Example Domain",
+  "markdown": "# Example Domain\n\nThis domain is for use in documentation examples.",
+  "source_status": 200,
+  "paid_source": false
+}
+```
+
+### Executive summary — $0.02 USDC (`page.summary`)
+
+Scrape a URL and return a 3-bullet executive summary plus clean Markdown.
+
+- GET https://x402-markdown-scraper.onrender.com/v1/summary?url=https://example.com
+- POST https://x402-markdown-scraper.onrender.com/v1/summary with JSON body {"url": "https://example.com"}
+- MCP: `tools/call` name `page_summary`, arguments {"url": "https://example.com"}
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Public http(s) URL of the article or page to convert."
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "additionalProperties": false
+}
+```
+
+Example 200 response after payment:
+
+```json
+{
+  "sku": "page.summary",
+  "url": "https://example.com",
+  "title": "Example Domain",
+  "summary": [
+    "This domain is for use in documentation examples.",
+    "It illustrates a typical article structure for agents.",
+    "The page contains little additional narrative detail."
+  ],
+  "markdown": "# Example Domain\n\nThis domain is for use in documentation examples.",
+  "source_status": 200
+}
+```
+
+### Page metadata — $0.01 USDC (`page.metadata`)
+
+Extract Open Graph, Schema.org JSON-LD, author, publish date, word count, and reading time.
+
+- GET https://x402-markdown-scraper.onrender.com/v1/extract-metadata?url=https://example.com
+- POST https://x402-markdown-scraper.onrender.com/v1/extract-metadata with JSON body {"url": "https://example.com"}
+- MCP: `tools/call` name `page_metadata`, arguments {"url": "https://example.com"}
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Public http(s) URL of the article or page to convert."
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "additionalProperties": false
+}
+```
+
+Example 200 response after payment:
+
+```json
+{
+  "sku": "page.metadata",
+  "url": "https://example.com",
+  "title": "Example Domain",
+  "description": null,
+  "author": null,
+  "published": null,
+  "opengraph": {
+    "og:title": "Example Domain"
+  },
+  "json_ld": [],
+  "word_count": 28,
+  "reading_time_minutes": 1,
+  "source_status": 200
+}
+```
+
+### PDF to markdown — $0.05 USDC (`doc.pdf`)
+
+Fetch a PDF URL and return stripped, structured Markdown of the document text.
+
+- GET https://x402-markdown-scraper.onrender.com/v1/parse-pdf?url=https://example.com/paper.pdf
+- POST https://x402-markdown-scraper.onrender.com/v1/parse-pdf with JSON body {"url": "https://example.com/paper.pdf"}
+- MCP: `tools/call` name `doc_pdf`, arguments {"url": "https://example.com/paper.pdf"}
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Public http(s) URL of the article or page to convert."
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "additionalProperties": false
+}
+```
+
+Example 200 response after payment:
+
+```json
+{
+  "sku": "doc.pdf",
+  "url": "https://example.com/paper.pdf",
+  "page_count": 2,
+  "markdown": "# PDF extract\n\n## Page 1\n\nHello",
+  "cached": false,
+  "source_status": 200
+}
+```
+
+### Deep site crawl — $0.15 USDC (`site.crawl`)
+
+Crawl a starting URL up to 3 internal levels and return a structured multi-page document map.
+
+- GET https://x402-markdown-scraper.onrender.com/v1/deep-crawl?url=https://example.com&max_depth=2
+- POST https://x402-markdown-scraper.onrender.com/v1/deep-crawl with JSON body {"url": "https://example.com", "max_depth": 2}
+- MCP: `tools/call` name `site_crawl`, arguments {"url": "https://example.com", "max_depth": 2}
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Public http(s) starting URL."
+    },
+    "max_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3,
+      "description": "Internal link depth, 1-3."
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "additionalProperties": false
+}
+```
+
+Example 200 response after payment:
+
+```json
+{
+  "sku": "site.crawl",
+  "root": "https://example.com/",
+  "max_depth": 2,
+  "page_count": 1,
+  "pages": [
+    {
+      "url": "https://example.com/",
+      "title": "Example",
+      "depth": 0
+    }
+  ],
+  "cached": false
+}
+```
+
+## x402 payment flow (HTTP)
+
+1. Call any paid path without payment.
+2. The server answers `402 Payment Required`, body `{"error":"Payment required"}`, and header
+   `PAYMENT-REQUIRED: <base64(JSON PaymentRequired)>`.
+3. Pick the `accepts` entry for your network, sign an EIP-3009 TransferWithAuthorization for exactly
+   `amount` to `payTo` with EIP-712 (domain below).
+4. Retry the identical request with header `PAYMENT-SIGNATURE: <base64(JSON PaymentPayload)>`.
+5. On success: HTTP 200, the SKU JSON, and header `PAYMENT-RESPONSE: <base64(JSON settlement)>`.
+   If the handler fails (4xx/5xx), the payment is not settled.
+
+Raw unpaid exchange:
+
+```http
+GET /v1/scrape?url=https://example.com HTTP/1.1
+Host: x402-markdown-scraper.onrender.com
+Accept: application/json
+
+HTTP/1.1 402 Payment Required
+Content-Type: application/json
+PAYMENT-REQUIRED: eyJ4NDAyVmVyc2lvbiI6Miwi...
+
+{"error":"Payment required"}
+```
+
+Decoded PAYMENT-REQUIRED (the live header also carries a `bazaar` discovery extension):
+
+```json
+{
+  "x402Version": 2,
+  "error": "Payment required",
+  "resource": {
+    "url": "https://x402-markdown-scraper.onrender.com/v1/scrape?url=https%3A%2F%2Fexample.com",
+    "description": "Converts any web article URL into clean, stripped Markdown for AI context windows.",
+    "mimeType": "application/json"
+  },
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "eip155:8453",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "amount": "10000",
+      "payTo": "0xf84EF3669eA39b87D4a850B4510f7aCBAC19be5f",
+      "maxTimeoutSeconds": 300,
+      "extra": {
+        "name": "USD Coin",
+        "version": "2"
+      }
+    },
+    {
+      "scheme": "exact",
+      "network": "eip155:84532",
+      "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "amount": "10000",
+      "payTo": "0xf84EF3669eA39b87D4a850B4510f7aCBAC19be5f",
+      "maxTimeoutSeconds": 300,
+      "extra": {
+        "name": "USDC",
+        "version": "2"
+      }
+    }
+  ]
+}
+```
+
+EIP-712 typed data to sign:
+
+```json
+{
+  "domain": {
+    "name": "USD Coin",
+    "version": "2",
+    "chainId": 8453,
+    "verifyingContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+  },
+  "primaryType": "TransferWithAuthorization",
+  "types": {
+    "TransferWithAuthorization": [
+      {
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "name": "value",
+        "type": "uint256"
+      },
+      {
+        "name": "validAfter",
+        "type": "uint256"
+      },
+      {
+        "name": "validBefore",
+        "type": "uint256"
+      },
+      {
+        "name": "nonce",
+        "type": "bytes32"
+      }
+    ]
+  }
+}
+```
+
+Decoded PAYMENT-SIGNATURE (send base64 of this JSON; echo `resource` and `extensions` from the challenge):
+
+```json
+{
+  "x402Version": 2,
+  "accepted": {
+    "scheme": "exact",
+    "network": "eip155:8453",
+    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "amount": "10000",
+    "payTo": "0xf84EF3669eA39b87D4a850B4510f7aCBAC19be5f",
+    "maxTimeoutSeconds": 300,
+    "extra": {
+      "name": "USD Coin",
+      "version": "2"
+    }
+  },
+  "resource": {
+    "url": "https://x402-markdown-scraper.onrender.com/v1/scrape?url=https%3A%2F%2Fexample.com",
+    "description": "Converts any web article URL into clean, stripped Markdown for AI context windows.",
+    "mimeType": "application/json"
+  },
+  "payload": {
+    "authorization": {
+      "from": "0xPayerAddress",
+      "to": "0xf84EF3669eA39b87D4a850B4510f7aCBAC19be5f",
+      "value": "10000",
+      "validAfter": "0",
+      "validBefore": "1767225600",
+      "nonce": "0x<32 random bytes, hex>"
+    },
+    "signature": "0x<65-byte EIP-712 signature>"
+  }
+}
+```
+
+Decoded PAYMENT-RESPONSE:
+
+```json
+{
+  "success": true,
+  "transaction": "0x<Base transaction hash>",
+  "network": "eip155:8453",
+  "payer": "0xPayerAddress"
+}
+```
+
+## MCP server
+
+Endpoint: `POST https://x402-markdown-scraper.onrender.com/mcp` (JSON-RPC 2.0, Streamable HTTP, JSON responses, no sessions;
+GET/DELETE return 405). Protocol versions 2025-06-18, 2025-03-26, 2024-11-05.
+
+- Free: `initialize`, `ping`, `tools/list`.
+- Paid: `tools/call`. Unpaid calls return a result with `isError: true` and the PaymentRequired object
+  (same shape as above, resource `mcp://tool/<name>`) in `structuredContent`.
+- Pay by retrying with the PaymentPayload object (not base64) in `params._meta["x402/payment"]`.
+- The settlement receipt is returned in `result._meta["x402/payment-response"]`.
+- Clients without x402 support (e.g. Claude Desktop, Cursor) can list tools but receive the
+  PaymentRequired result instead of data.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "scrape_md",
+    "arguments": {
+      "url": "https://example.com"
+    },
+    "_meta": {
+      "x402/payment": {
+        "x402Version": 2,
+        "accepted": "...",
+        "payload": "..."
+      }
+    }
+  }
+}
+```
+
+## Client code
+
+Python with the x402 SDK and httpx (signs and retries automatically):
+
+```python
+import asyncio, os
+from eth_account import Account
+from x402 import x402Client
+from x402.http.clients import x402HttpxClient  # an httpx.AsyncClient
+from x402.mechanisms.evm import EthAccountSigner
+from x402.mechanisms.evm.exact.register import register_exact_evm_client
+
+async def main():
+    payer = x402Client()
+    register_exact_evm_client(payer, EthAccountSigner(Account.from_key(os.environ["EVM_PRIVATE_KEY"])))
+    async with x402HttpxClient(payer) as http:
+        r = await http.get("https://x402-markdown-scraper.onrender.com/v1/scrape", params={"url": "https://example.com"})
+        print(r.json()["markdown"])
+
+asyncio.run(main())
+```
+
+Python with `x402-scraper`:
+
+```python
+import asyncio
+from x402_scraper import ScraperClient  # reads EVM_PRIVATE_KEY
+md = asyncio.run(ScraperClient().scrape("https://example.com"))["markdown"]
+```
+
+LangChain tool:
+
+```python
+from langchain_core.tools import StructuredTool
+from x402_scraper import ScraperClient
+client = ScraperClient()
+scrape = StructuredTool.from_function(coroutine=client.scrape, name="scrape_url", description="Fetch any URL as clean Markdown ($0.01 USDC on Base).")
+```
+
+LlamaIndex tool:
+
+```python
+from llama_index.core.tools import FunctionTool
+from x402_scraper import ScraperClient
+client = ScraperClient()
+parse_pdf = FunctionTool.from_defaults(async_fn=client.parse_pdf, name="parse_pdf", description="Convert a PDF URL to structured Markdown ($0.05 USDC on Base).")
+```
+
+## Errors and limits
+
+- 400: not http(s), missing host, unresolvable host, localhost/metadata/private IP targets (blocked).
+- 402: payment required or rejected (see PAYMENT-REQUIRED `error`).
+- 413: source response over the size limit.
+- 422: invalid input, URL is not a PDF, encrypted or unreadable PDF, bad `max_depth`.
+- 502: source returned an error, too many redirects, or content could not be parsed.
+- 504: source or crawl timed out.
+- Limits: HTML 2 MB, PDF 8 MB, 5 redirects, crawl timeout 15s, crawl depth 1-3 on the same host.
+- Responses are cached for 15 minutes (`cached: true`); repeat calls still pay.
+- No login walls, no JavaScript rendering, no CAPTCHA solving.
+
