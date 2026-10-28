@@ -131,7 +131,7 @@ app.add_middleware(CoinbaseWalletCompatMiddleware)
 
 
 _FEATURED_SKUS = ("scrape.md", "page.summary", "page.metadata", "doc.pdf", "site.crawl")
-_PUBLIC_HOST = "https://x402-markdown-scraper.onrender.com"
+_PUBLIC_HOST = settings.public_url.rstrip("/")
 
 
 def _sku_params(product) -> str:

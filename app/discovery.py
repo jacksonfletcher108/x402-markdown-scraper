@@ -6,7 +6,6 @@ from decimal import Decimal
 from app.catalog import PRODUCTS, SCRAPE_DESCRIPTION
 from app.config import MAINNET, SEPOLIA, Settings
 
-PUBLIC_HOST = "https://x402-markdown-scraper.onrender.com"
 FEATURED_SKUS = ("scrape.md", "page.summary", "page.metadata", "doc.pdf", "site.crawl")
 # Circle USDC contracts and their EIP-712 domain (name, version) per network.
 USDC = {
@@ -16,28 +15,29 @@ USDC = {
 
 
 def llms_txt(settings: Settings) -> str:
+    host = settings.public_url.rstrip("/")
     lines = [
         "# x402 Web Markdown Scraper",
         "",
         "> Pay-per-request web scraping API and MCP server for AI agents: any URL or PDF to clean Markdown.",
         "> Pay USDC on Base (eip155:8453) over HTTP 402 (x402 v2). No account or API key. Category: Data.",
-        f"> Full reference with schemas and payment payloads: {PUBLIC_HOST}/llms-full.txt",
+        f"> Full reference with schemas and payment payloads: {host}/llms-full.txt",
         "",
-        f"Base: {PUBLIC_HOST}",
+        f"Base: {host}",
         f"Pay to: {settings.pay_to()}",
         f"Asset: USDC on Base. Networks: {', '.join(settings.networks())}",
         "",
         "## Free (no payment)",
         "",
-        f"- [Health]({PUBLIC_HOST}/health): GET /health — keep-alive liveness",
-        f"- [Catalog]({PUBLIC_HOST}/v1/catalog): GET /v1/catalog — machine-readable SKUs",
-        f"- [OpenAPI]({PUBLIC_HOST}/openapi.json): GET /openapi.json — request/response schemas",
-        f"- [MCP server]({PUBLIC_HOST}/mcp): POST /mcp — Streamable HTTP MCP; tools/call paid via x402 in _meta",
-        f"- [MCP]({PUBLIC_HOST}/.well-known/mcp): GET /.well-known/mcp — agent tool card",
-        f"- [Plugin]({PUBLIC_HOST}/.well-known/ai-plugin.json): GET /.well-known/ai-plugin.json",
-        f"- [llms.txt]({PUBLIC_HOST}/llms.txt): this file",
-        f"- [llms-full.txt]({PUBLIC_HOST}/llms-full.txt): full reference — schemas, x402 headers, sample payloads, USDC contract",
-        f"- [Playground]({PUBLIC_HOST}/#playground): try every SKU from a browser wallet",
+        f"- [Health]({host}/health): GET /health — keep-alive liveness",
+        f"- [Catalog]({host}/v1/catalog): GET /v1/catalog — machine-readable SKUs",
+        f"- [OpenAPI]({host}/openapi.json): GET /openapi.json — request/response schemas",
+        f"- [MCP server]({host}/mcp): POST /mcp — Streamable HTTP MCP; tools/call paid via x402 in _meta",
+        f"- [MCP]({host}/.well-known/mcp): GET /.well-known/mcp — agent tool card",
+        f"- [Plugin]({host}/.well-known/ai-plugin.json): GET /.well-known/ai-plugin.json",
+        f"- [llms.txt]({host}/llms.txt): this file",
+        f"- [llms-full.txt]({host}/llms-full.txt): full reference — schemas, x402 headers, sample payloads, USDC contract",
+        f"- [Playground]({host}/#playground): try every SKU from a browser wallet",
         "- Python client: `pip install x402-scraper`",
         "",
         "## Paid (x402)",
@@ -49,7 +49,7 @@ def llms_txt(settings: Settings) -> str:
     for product in PRODUCTS:
         example_q = "&".join(f"{k}={v}" for k, v in product.query_example.items())
         lines.append(
-            f"- [{product.name}]({PUBLIC_HOST}{product.path}?{example_q}): "
+            f"- [{product.name}]({host}{product.path}?{example_q}): "
             f"{product.method} {product.path}?url= — {product.price} USDC. {product.description}"
         )
     lines.extend(
@@ -57,11 +57,11 @@ def llms_txt(settings: Settings) -> str:
             "",
             "## Primary SKU",
             "",
-            f"GET/POST {PUBLIC_HOST}/v1/scrape costs $0.01 USDC. Query or JSON body: {{\"url\": \"...\"}}.",
-            f"GET/POST {PUBLIC_HOST}/v1/summary costs $0.02 USDC. Returns 3-bullet summary + markdown.",
-            f"GET/POST {PUBLIC_HOST}/v1/extract-metadata costs $0.01 USDC. Returns Open Graph, JSON-LD, author, date, word count.",
-            f"GET/POST {PUBLIC_HOST}/v1/parse-pdf costs $0.05 USDC. PDF URL to structured Markdown.",
-            f"GET/POST {PUBLIC_HOST}/v1/deep-crawl costs $0.15 USDC. Internal crawl, max_depth 1-3.",
+            f"GET/POST {host}/v1/scrape costs $0.01 USDC. Query or JSON body: {{\"url\": \"...\"}}.",
+            f"GET/POST {host}/v1/summary costs $0.02 USDC. Returns 3-bullet summary + markdown.",
+            f"GET/POST {host}/v1/extract-metadata costs $0.01 USDC. Returns Open Graph, JSON-LD, author, date, word count.",
+            f"GET/POST {host}/v1/parse-pdf costs $0.05 USDC. PDF URL to structured Markdown.",
+            f"GET/POST {host}/v1/deep-crawl costs $0.15 USDC. Internal crawl, max_depth 1-3.",
             "",
             "## Optional SKUs",
             "",
@@ -83,6 +83,7 @@ def _json(value: object) -> str:
 
 def llms_full_txt(settings: Settings) -> str:
     """Long-form reference for AI crawlers: every SKU, schema, payload and header."""
+    host = settings.public_url.rstrip("/")
     networks = [network for network in settings.networks() if network in USDC]
     pay_to = settings.pay_to()
     featured = [product for product in PRODUCTS if product.sku in FEATURED_SKUS]
@@ -112,12 +113,12 @@ def llms_full_txt(settings: Settings) -> str:
         "",
         "## Quick facts",
         "",
-        f"- Base URL: {PUBLIC_HOST}",
-        f"- MCP server (Streamable HTTP, stateless): {PUBLIC_HOST}/mcp",
-        f"- OpenAPI 3 spec: {PUBLIC_HOST}/openapi.json · Swagger UI: {PUBLIC_HOST}/docs",
-        f"- Short manifest: {PUBLIC_HOST}/llms.txt · MCP tool card: {PUBLIC_HOST}/.well-known/mcp",
-        f"- Machine catalog: {PUBLIC_HOST}/v1/catalog",
-        f"- Browser playground: {PUBLIC_HOST}/#playground",
+        f"- Base URL: {host}",
+        f"- MCP server (Streamable HTTP, stateless): {host}/mcp",
+        f"- OpenAPI 3 spec: {host}/openapi.json · Swagger UI: {host}/docs",
+        f"- Short manifest: {host}/llms.txt · MCP tool card: {host}/.well-known/mcp",
+        f"- Machine catalog: {host}/v1/catalog",
+        f"- Browser playground: {host}/#playground",
         "- Python client: `pip install x402-scraper` (PyPI package `x402-scraper`, import `x402_scraper`)",
         "- Source: https://github.com/jacksonfletcher108/x402-markdown-scraper",
         "- Protocol: x402 v2, scheme `exact`, headers PAYMENT-REQUIRED / PAYMENT-SIGNATURE / PAYMENT-RESPONSE",
@@ -153,8 +154,8 @@ def llms_full_txt(settings: Settings) -> str:
                 "",
                 product.description,
                 "",
-                f"- GET {PUBLIC_HOST}{product.path}?{query}",
-                f"- POST {PUBLIC_HOST}{product.path} with JSON body {json.dumps(product.query_example)}",
+                f"- GET {host}{product.path}?{query}",
+                f"- POST {host}{product.path} with JSON body {json.dumps(product.query_example)}",
                 f"- MCP: `tools/call` name `{product.sku.replace('.', '_')}`, arguments {json.dumps(product.query_example)}",
                 "",
                 "Input schema:",
@@ -176,7 +177,7 @@ def llms_full_txt(settings: Settings) -> str:
         "x402Version": 2,
         "error": "Payment required",
         "resource": {
-            "url": f"{PUBLIC_HOST}{scrape.path}?url=https%3A%2F%2Fexample.com",
+            "url": f"{host}{scrape.path}?url=https%3A%2F%2Fexample.com",
             "description": scrape.description,
             "mimeType": "application/json",
         },
@@ -235,7 +236,7 @@ def llms_full_txt(settings: Settings) -> str:
             "",
             "```http",
             f"GET {scrape.path}?url=https://example.com HTTP/1.1",
-            "Host: x402-markdown-scraper.onrender.com",
+            f"Host: {host.split('://', 1)[-1]}",
             "Accept: application/json",
             "",
             "HTTP/1.1 402 Payment Required",
@@ -271,7 +272,7 @@ def llms_full_txt(settings: Settings) -> str:
             "",
             "## MCP server",
             "",
-            f"Endpoint: `POST {PUBLIC_HOST}/mcp` (JSON-RPC 2.0, Streamable HTTP, JSON responses, no sessions;",
+            f"Endpoint: `POST {host}/mcp` (JSON-RPC 2.0, Streamable HTTP, JSON responses, no sessions;",
             "GET/DELETE return 405). Protocol versions 2025-06-18, 2025-03-26, 2024-11-05.",
             "",
             "- Free: `initialize`, `ping`, `tools/list`.",
@@ -313,7 +314,7 @@ def llms_full_txt(settings: Settings) -> str:
             "    payer = x402Client()",
             '    register_exact_evm_client(payer, EthAccountSigner(Account.from_key(os.environ["EVM_PRIVATE_KEY"])))',
             "    async with x402HttpxClient(payer) as http:",
-            f'        r = await http.get("{PUBLIC_HOST}/v1/scrape", params={{"url": "https://example.com"}})',
+            f'        r = await http.get("{host}/v1/scrape", params={{"url": "https://example.com"}})',
             '        print(r.json()["markdown"])',
             "",
             "asyncio.run(main())",
@@ -364,6 +365,7 @@ def llms_full_txt(settings: Settings) -> str:
 
 
 def mcp_manifest(settings: Settings) -> dict:
+    host = settings.public_url.rstrip("/")
     featured = [
         product
         for product in PRODUCTS
@@ -377,8 +379,8 @@ def mcp_manifest(settings: Settings) -> dict:
         "protocol": "x402",
         "x402Version": 2,
         "category": "Data",
-        "homepage": PUBLIC_HOST,
-        "mcpEndpoint": f"{PUBLIC_HOST}/mcp",
+        "homepage": host,
+        "mcpEndpoint": f"{host}/mcp",
         "transport": "streamable-http",
         "auth": {
             "type": "x402",
@@ -394,7 +396,7 @@ def mcp_manifest(settings: Settings) -> dict:
                 "description": product.description,
                 "method": "GET",
                 "path": product.path,
-                "url": f"{PUBLIC_HOST}{product.path}",
+                "url": f"{host}{product.path}",
                 "price": product.price,
                 "inputSchema": product.query_schema,
                 "outputSchema": product.output_schema,
@@ -406,6 +408,7 @@ def mcp_manifest(settings: Settings) -> dict:
 
 
 def ai_plugin_manifest(settings: Settings) -> dict:
+    host = settings.public_url.rstrip("/")
     scrape = next(product for product in PRODUCTS if product.sku == "scrape.md")
     return {
         "schema_version": "v1",
@@ -419,10 +422,10 @@ def ai_plugin_manifest(settings: Settings) -> dict:
         "auth": {"type": "none"},
         "api": {
             "type": "openapi",
-            "url": f"{PUBLIC_HOST}/openapi.json",
+            "url": f"{host}/openapi.json",
             "is_user_authenticated": False,
         },
-        "legal_info_url": PUBLIC_HOST,
+        "legal_info_url": host,
         "x402": {
             "price": scrape.price,
             "asset": "USDC",

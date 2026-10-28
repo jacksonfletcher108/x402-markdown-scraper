@@ -27,3 +27,5 @@ services:
         sync: false
       - key: WALLETCONNECT_PROJECT_ID
         sync: false
+      - key: PUBLIC_URL
+        sync: false

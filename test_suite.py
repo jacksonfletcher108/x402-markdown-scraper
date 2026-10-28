@@ -257,6 +257,15 @@ class DiscoveryRouteTests(unittest.TestCase):
         self.assertIn("application/xml", sitemap.headers["content-type"])
         self.assertIn("/llms-full.txt</loc>", sitemap.text)
 
+    def test_public_url_setting_rewrites_discovery(self) -> None:
+        from app.discovery import llms_full_txt, llms_txt, mcp_manifest
+
+        custom = Settings(public_url="https://scraper.example.dev/")
+        for text in (llms_txt(custom), llms_full_txt(custom), str(mcp_manifest(custom))):
+            self.assertIn("https://scraper.example.dev/mcp", text)
+            self.assertNotIn("onrender.com", text)
+        self.assertIn("Host: scraper.example.dev", llms_full_txt(custom))
+
     def test_openapi(self) -> None:
         response = self.client.get("/openapi.json")
         self.assertEqual(response.status_code, 200)

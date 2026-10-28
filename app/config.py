@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     max_redirects: int = 5
     crawl_timeout_seconds: float = 15.0
     cache_ttl_seconds: float = 900.0
+    # Public address used in llms.txt, sitemap, manifests and code samples. Set PUBLIC_URL
+    # to a custom domain once it points at this service.
+    public_url: str = "https://x402-markdown-scraper.onrender.com"
     # Public Reown (WalletConnect) project id; enables the playground's QR connect button.
     # Not a secret: it is rendered into the page. WALLETCONNECT_PROJECT_ID overrides it.
     walletconnect_project_id: str = "36c9bdd1d2bfac1b08a0ec21a93b6dd7"
