@@ -233,6 +233,30 @@ class DiscoveryRouteTests(unittest.TestCase):
         self.assertIn("/v1/parse-pdf", response.text)
         self.assertIn("/v1/deep-crawl", response.text)
 
+    def test_llms_full_and_crawler_files(self) -> None:
+        full = self.client.get("/llms-full.txt")
+        self.assertEqual(full.status_code, 200)
+        for marker in (
+            "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "PAYMENT-REQUIRED",
+            "PAYMENT-SIGNATURE",
+            "PAYMENT-RESPONSE",
+            "TransferWithAuthorization",
+            "| 150000 |",
+            "x402/payment",
+            "/mcp",
+        ):
+            self.assertIn(marker, full.text)
+        for tool in ("scrape_md", "page_summary", "page_metadata", "doc_pdf", "site_crawl"):
+            self.assertIn(tool, full.text)
+        self.assertIn("/llms-full.txt", self.client.get("/llms.txt").text)
+        robots = self.client.get("/robots.txt").text
+        self.assertIn("User-agent: GPTBot", robots)
+        self.assertIn("Sitemap: https://x402-markdown-scraper.onrender.com/sitemap.xml", robots)
+        sitemap = self.client.get("/sitemap.xml")
+        self.assertIn("application/xml", sitemap.headers["content-type"])
+        self.assertIn("/llms-full.txt</loc>", sitemap.text)
+
     def test_openapi(self) -> None:
         response = self.client.get("/openapi.json")
         self.assertEqual(response.status_code, 200)

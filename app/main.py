@@ -20,7 +20,7 @@ from app.cache import cache
 from app.catalog import PRODUCTS, public_catalog
 from app.config import get_settings
 from app.crawl import deep_crawl
-from app.discovery import ai_plugin_manifest, llms_txt, mcp_manifest, x402_openapi_extension
+from app.discovery import ai_plugin_manifest, llms_full_txt, llms_txt, mcp_manifest, x402_openapi_extension
 from app.mcp_server import McpServer
 from app.playground import PLAYGROUND_CSS, playground_html
 from app.models import (
@@ -171,6 +171,7 @@ def _storefront_html() -> str:
             "</article>"
         )
     python_src = html.escape(
+        "import asyncio\n"
         "import os\n"
         "import httpx\n"
         "from eth_account import Account\n"
@@ -187,12 +188,15 @@ def _storefront_html() -> str:
         'print(probe.status_code, probe.headers.get("PAYMENT-REQUIRED", "")[:64])\n'
         "\n"
         "# 2) Settle Exact USDC on Base with the x402 client SDK\n"
-        'account = Account.from_key(os.environ["EVM_PRIVATE_KEY"])\n'
-        "client = x402Client()\n"
-        "register_exact_evm_client(client, EthAccountSigner(account))\n"
-        "with x402HttpxClient(client) as http:\n"
-        "    paid = http.get(URL, params=PARAMS)\n"
-        '    print(paid.status_code, paid.json().get("sku"))\n'
+        "async def pay():\n"
+        '    account = Account.from_key(os.environ["EVM_PRIVATE_KEY"])\n'
+        "    client = x402Client()\n"
+        "    register_exact_evm_client(client, EthAccountSigner(account))\n"
+        "    async with x402HttpxClient(client) as http:  # an httpx.AsyncClient\n"
+        "        paid = await http.get(URL, params=PARAMS)\n"
+        '        print(paid.status_code, paid.json().get("sku"))\n'
+        "\n"
+        "asyncio.run(pay())\n"
     )
     js_src = html.escape(
         f'const url = "{_PUBLIC_HOST}/v1/scrape?url=https://example.com";\n'
@@ -318,6 +322,30 @@ async def health() -> dict[str, str]:
 async def llms() -> str:
     """Unpaid. Lists SKUs and Exact USDC prices for language-model crawlers."""
     return llms_txt(settings)
+
+
+@app.get("/llms-full.txt", response_class=PlainTextResponse, tags=["Discovery"], summary="Full agent reference")
+async def llms_full() -> str:
+    """Unpaid. Every SKU schema, x402 header payloads, MCP usage, and client code."""
+    return llms_full_txt(settings)
+
+
+_CRAWLER_PATHS = ("/", "/llms.txt", "/llms-full.txt", "/openapi.json", "/docs", "/.well-known/mcp", "/v1/catalog")
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
+async def robots() -> str:
+    # Explicitly welcome AI crawlers; paid paths only ever return 402 to them.
+    agents = ("GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-User", "PerplexityBot", "Google-Extended", "*")
+    blocks = [f"User-agent: {agent}\nAllow: /\n" for agent in agents]
+    return "\n".join(blocks) + f"\nSitemap: {_PUBLIC_HOST}/sitemap.xml\n"
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap() -> Response:
+    urls = "".join(f"<url><loc>{_PUBLIC_HOST}{path}</loc></url>" for path in _CRAWLER_PATHS)
+    body = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>'
+    return Response(content=body, media_type="application/xml")
 
 
 @app.get("/.well-known/mcp", tags=["Discovery"], summary="MCP tool card")
