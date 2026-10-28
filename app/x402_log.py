@@ -14,6 +14,8 @@ log = logging.getLogger("x402.shop")
 PAID_PREFIXES = (
     "/v1/scrape",
     "/scrape",
+    "/v1/summary",
+    "/v1/extract-metadata",
     "/v1/title",
     "/v1/text",
     "/v1/outline",

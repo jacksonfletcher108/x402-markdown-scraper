@@ -43,7 +43,7 @@ def paid_routes(settings: Settings) -> dict[str, RouteConfig]:
     scrape = next(product for product in PRODUCTS if product.sku == "scrape.md")
     scrape_config = route_config(settings, scrape)
     routes["GET /scrape"] = scrape_config
-    routes["POST /scrape"] = RouteConfig(
+    post_scrape = RouteConfig(
         accepts=payment_options(settings, scrape.price),
         mime_type="application/json",
         description=scrape.description,
@@ -51,6 +51,18 @@ def paid_routes(settings: Settings) -> dict[str, RouteConfig]:
         tags=list(scrape.tags)[:5],
         extensions=bazaar_extension(scrape, body_type="json"),
     )
+    routes["POST /scrape"] = post_scrape
+    routes["POST /v1/scrape"] = post_scrape
+    for sku, path in (("page.summary", "/v1/summary"), ("page.metadata", "/v1/extract-metadata")):
+        product = next(item for item in PRODUCTS if item.sku == sku)
+        routes[f"POST {path}"] = RouteConfig(
+            accepts=payment_options(settings, product.price),
+            mime_type="application/json",
+            description=product.description,
+            service_name=product.name[:32],
+            tags=list(product.tags)[:5],
+            extensions=bazaar_extension(product, body_type="json"),
+        )
     return routes
 
 

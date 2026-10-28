@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.catalog import PRODUCTS, SCRAPE_DESCRIPTION, SCRAPE_OUTPUT_SCHEMA, URL_INPUT_SCHEMA
+from app.catalog import PRODUCTS, SCRAPE_DESCRIPTION, URL_INPUT_SCHEMA
 from app.config import Settings
 
 PUBLIC_HOST = "https://x402-markdown-scraper.onrender.com"
@@ -43,8 +43,9 @@ def llms_txt(settings: Settings) -> str:
             "",
             "## Primary SKU",
             "",
-            f"GET {PUBLIC_HOST}/v1/scrape?url={{url}} costs $0.01 USDC on Base.",
-            "Query: url (uri, required). Optional: pay_for_source (boolean, default true).",
+            f"GET/POST {PUBLIC_HOST}/v1/scrape costs $0.01 USDC. Query or JSON body: {{\"url\": \"...\"}}.",
+            f"GET/POST {PUBLIC_HOST}/v1/summary costs $0.02 USDC. Returns 3-bullet summary + markdown.",
+            f"GET/POST {PUBLIC_HOST}/v1/extract-metadata costs $0.01 USDC. Returns Open Graph, JSON-LD, author, date, word count.",
             "",
             "## Optional SKUs",
             "",
@@ -56,11 +57,12 @@ def llms_txt(settings: Settings) -> str:
 
 
 def mcp_manifest(settings: Settings) -> dict:
-    scrape = next(product for product in PRODUCTS if product.sku == "scrape.md")
+    featured = [product for product in PRODUCTS if product.sku in {"scrape.md", "page.summary", "page.metadata"}]
+    scrape = featured[0]
     return {
         "name": "x402-markdown-scraper",
         "description": SCRAPE_DESCRIPTION,
-        "version": "0.3.0",
+        "version": "0.4.0",
         "protocol": "x402",
         "x402Version": 2,
         "category": "Data",
@@ -75,15 +77,17 @@ def mcp_manifest(settings: Settings) -> dict:
         },
         "tools": [
             {
-                "name": "scrape_markdown",
-                "description": SCRAPE_DESCRIPTION,
+                "name": product.sku.replace(".", "_"),
+                "description": product.description,
                 "method": "GET",
-                "path": "/v1/scrape",
-                "url": f"{PUBLIC_HOST}/v1/scrape",
+                "path": product.path,
+                "url": f"{PUBLIC_HOST}{product.path}",
+                "price": product.price,
                 "inputSchema": URL_INPUT_SCHEMA,
-                "outputSchema": SCRAPE_OUTPUT_SCHEMA,
+                "outputSchema": product.output_schema,
                 "outputMimeType": "application/json",
             }
+            for product in featured
         ],
     }
 
@@ -96,9 +100,8 @@ def ai_plugin_manifest(settings: Settings) -> dict:
         "name_for_model": "x402_markdown_scraper",
         "description_for_human": SCRAPE_DESCRIPTION,
         "description_for_model": (
-            f"{SCRAPE_DESCRIPTION} Call GET /v1/scrape?url= with a public article URL. "
-            f"Unpaid requests return HTTP 402. Pay {scrape.price} USDC on Base (eip155:8453) "
-            "via x402 PAYMENT-SIGNATURE, then retry. Response JSON includes markdown."
+            f"{SCRAPE_DESCRIPTION} Also: GET /v1/summary ($0.02) and GET /v1/extract-metadata ($0.01). "
+            f"Unpaid requests return HTTP 402. Pay USDC on Base (eip155:8453) via x402."
         ),
         "auth": {"type": "none"},
         "api": {
@@ -112,9 +115,12 @@ def ai_plugin_manifest(settings: Settings) -> dict:
             "asset": "USDC",
             "network": "eip155:8453",
             "payTo": settings.pay_to(),
-            "tool": "GET /v1/scrape",
+            "tools": [
+                {"path": "GET /v1/scrape", "price": "$0.01"},
+                {"path": "GET /v1/summary", "price": "$0.02"},
+                {"path": "GET /v1/extract-metadata", "price": "$0.01"},
+            ],
             "input": {"url": "string, required, public article URL"},
-            "output": "JSON { sku, url, title, markdown, source_status, paid_source }",
         },
     }
 
@@ -129,5 +135,10 @@ def x402_openapi_extension(settings: Settings) -> dict:
         "category": "Data",
         "primaryPrice": "$0.01",
         "primaryPath": "GET /v1/scrape",
+        "featured": [
+            {"path": "GET /v1/scrape", "price": "$0.01"},
+            {"path": "GET /v1/summary", "price": "$0.02"},
+            {"path": "GET /v1/extract-metadata", "price": "$0.01"},
+        ],
         "note": "Unpaid calls to paid paths return HTTP 402 with a PAYMENT-REQUIRED header.",
     }

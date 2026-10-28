@@ -20,14 +20,17 @@ from app.config import get_settings
 from app.discovery import ai_plugin_manifest, llms_txt, mcp_manifest, x402_openapi_extension
 from app.models import (
     LinksResponse,
+    MetadataResponse,
     OutlineResponse,
     ScrapeRequest,
     ScrapeResponse,
+    SummaryResponse,
     TextResponse,
     TitleResponse,
 )
 from app.payments import paid_routes, paywall_is_testnet, resource_server, settlement_ready
 from app.scraper import ScrapeError, fetch_page
+from app.summarize import executive_summary
 from app.x402_log import X402TraceMiddleware, attach_payment_logs
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -45,9 +48,9 @@ app = FastAPI(
     title="x402 Markdown Scraper",
     description=(
         "Converts any web article URL into clean, stripped Markdown for AI context windows. "
-        "GET /v1/scrape?url= costs $0.01 USDC on Base via x402. Category: Data."
+        "GET /v1/scrape $0.01, GET /v1/summary $0.02, GET /v1/extract-metadata $0.01 USDC on Base via x402."
     ),
-    version="0.3.0",
+    version="0.4.0",
 )
 
 server = attach_payment_logs(resource_server(settings))
@@ -189,6 +192,7 @@ async def scrape_get(
     )
 
 
+@app.post("/v1/scrape", response_model=ScrapeResponse)
 @app.post("/scrape", response_model=ScrapeResponse)
 async def scrape_post(body: ScrapeRequest) -> ScrapeResponse:
     page = await _page(str(body.url), body.pay_for_source)
@@ -198,6 +202,66 @@ async def scrape_post(body: ScrapeRequest) -> ScrapeResponse:
         markdown=page.markdown,
         source_status=page.source_status,
         paid_source=page.paid_source,
+    )
+
+
+@app.get("/v1/summary", response_model=SummaryResponse)
+async def summary_get(url: str = Query(..., description="Public http(s) URL to fetch.")) -> SummaryResponse:
+    page = await _page(url)
+    return SummaryResponse(
+        url=page.url,
+        title=page.title,
+        summary=executive_summary(page.text, page.title, page.headings),
+        markdown=page.markdown,
+        source_status=page.source_status,
+    )
+
+
+@app.post("/v1/summary", response_model=SummaryResponse)
+async def summary_post(body: ScrapeRequest) -> SummaryResponse:
+    page = await _page(str(body.url), body.pay_for_source)
+    return SummaryResponse(
+        url=page.url,
+        title=page.title,
+        summary=executive_summary(page.text, page.title, page.headings),
+        markdown=page.markdown,
+        source_status=page.source_status,
+    )
+
+
+@app.get("/v1/extract-metadata", response_model=MetadataResponse)
+async def metadata_get(
+    url: str = Query(..., description="Public http(s) URL to fetch."),
+) -> MetadataResponse:
+    page = await _page(url)
+    return MetadataResponse(
+        url=page.url,
+        title=page.title,
+        description=page.description,
+        author=page.author,
+        published=page.published,
+        opengraph=page.opengraph,
+        json_ld=page.json_ld,
+        word_count=page.word_count,
+        reading_time_minutes=page.reading_time_minutes,
+        source_status=page.source_status,
+    )
+
+
+@app.post("/v1/extract-metadata", response_model=MetadataResponse)
+async def metadata_post(body: ScrapeRequest) -> MetadataResponse:
+    page = await _page(str(body.url), body.pay_for_source)
+    return MetadataResponse(
+        url=page.url,
+        title=page.title,
+        description=page.description,
+        author=page.author,
+        published=page.published,
+        opengraph=page.opengraph,
+        json_ld=page.json_ld,
+        word_count=page.word_count,
+        reading_time_minutes=page.reading_time_minutes,
+        source_status=page.source_status,
     )
 
 
@@ -233,6 +297,8 @@ async def links_get(url: str = Query(..., description="Public http(s) URL to fet
 _PAID_OPENAPI_PATHS = {
     "/v1/scrape": "$0.01",
     "/scrape": "$0.01",
+    "/v1/summary": "$0.02",
+    "/v1/extract-metadata": "$0.01",
     "/v1/title": "$0.001",
     "/v1/text": "$0.005",
     "/v1/outline": "$0.005",

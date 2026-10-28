@@ -45,3 +45,26 @@ class LinksResponse(BaseModel):
     url: str
     links: list[str]
     source_status: int
+
+
+class SummaryResponse(BaseModel):
+    sku: str = "page.summary"
+    url: str
+    title: str | None
+    summary: list[str] = Field(min_length=3, max_length=3)
+    markdown: str
+    source_status: int
+
+
+class MetadataResponse(BaseModel):
+    sku: str = "page.metadata"
+    url: str
+    title: str | None
+    description: str | None
+    author: str | None
+    published: str | None
+    opengraph: dict[str, str]
+    json_ld: list[object]
+    word_count: int
+    reading_time_minutes: int
+    source_status: int
