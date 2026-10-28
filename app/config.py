@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     max_redirects: int = 5
     crawl_timeout_seconds: float = 15.0
     cache_ttl_seconds: float = 900.0
+    # Public Reown (WalletConnect) project id; enables the playground's QR connect button.
+    walletconnect_project_id: str = ""
 
     def networks(self) -> list[Network]:
         requested = [item.strip() for item in self.x402_networks.split(",") if item.strip()]

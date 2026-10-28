@@ -25,3 +25,5 @@ services:
         sync: false
       - key: CDP_API_KEY_SECRET
         sync: false
+      - key: WALLETCONNECT_PROJECT_ID
+        sync: false

@@ -191,6 +191,15 @@ class DiscoveryRouteTests(unittest.TestCase):
         ):
             self.assertIn(marker, text)
 
+    def test_playground_walletconnect_only_with_project_id(self) -> None:
+        from app.playground import playground_html
+
+        self.assertNotIn('id="pg-wc"', playground_html(PRODUCTS))
+        page = playground_html(PRODUCTS, "abc123")
+        self.assertIn('id="pg-wc" data-project-id="abc123"', page)
+        self.assertIn("@walletconnect/ethereum-provider@2.26.0", page)
+        self.assertIn('id="pg-steps" hidden', page)
+
     def test_swagger_docs_unpaid(self) -> None:
         response = self.client.get("/docs")
         self.assertEqual(response.status_code, 200)

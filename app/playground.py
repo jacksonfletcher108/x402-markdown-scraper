@@ -32,6 +32,7 @@ PLAYGROUND_CSS = """
     .pg-btn.ghost { background:#fff; color:var(--ink); border:1px solid var(--line); }
     .pg-btn:disabled { opacity:.55; cursor:progress; }
     .pg-account { font-size:.85rem; color:var(--muted); font-family:ui-monospace,monospace; }
+    .pg-steps[hidden] { display:none; }
     .pg-steps { list-style:none; display:flex; flex-wrap:wrap; gap:.4rem; padding:0; margin:1rem 0 .4rem; }
     .pg-steps li { font-size:.8rem; padding:.2rem .6rem; border-radius:999px; background:#f1f5f9; color:var(--muted); }
     .pg-steps li.active { background:#fef3c7; color:#92400e; }
@@ -76,7 +77,9 @@ _SCRIPT = """
     if (event.detail && event.detail.provider) announced.push(event.detail.provider);
   });
   window.dispatchEvent(new Event("eip6963:requestProvider"));
-  const wallet = () => window.ethereum || announced[0];
+  let wcProvider = null;
+  const wallet = () => wcProvider || window.ethereum || announced[0];
+  const wcButton = $("pg-wc");
   const option = () => sku.options[sku.selectedIndex];
   const isMobile = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
     || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
@@ -101,7 +104,9 @@ _SCRIPT = """
     });
     $("pg-nowallet-text").textContent = isMobile()
       ? "Mobile browsers can't reach a wallet. Open this page inside your wallet app's browser, then tap Connect wallet again."
-      : "Install a browser wallet extension, add a little USDC on Base (no ETH needed for gas), then reload this page.";
+      : wcButton
+        ? "Click WalletConnect (QR) to scan with a phone wallet app, or install a browser extension and reload. You need a little USDC on Base (no ETH for gas)."
+        : "Install a browser wallet extension, add a little USDC on Base (no ETH needed for gas), then reload this page.";
     $("pg-nowallet").hidden = false;
   }
 
@@ -130,6 +135,7 @@ _SCRIPT = """
     });
   }
   function resetSteps() {
+    $("pg-steps").hidden = false;
     document.querySelectorAll("#pg-steps li").forEach((li) => li.classList.remove("done", "active"));
   }
   function status(text, isError) {
@@ -155,7 +161,9 @@ _SCRIPT = """
   async function connect() {
     if (!wallet()) {
       showNoWallet();
-      throw new Error("No browser wallet found.");
+      const err = new Error("No browser wallet found.");
+      err.quiet = true;  // the help panel already explains it
+      throw err;
     }
     $("pg-nowallet").hidden = true;
     setStep("connect");
@@ -168,10 +176,41 @@ _SCRIPT = """
       if (err && err.code === 4001) throw new Error("Connection rejected in wallet.");
       throw err;
     }
-    account = accounts[0];
-    $("pg-account").textContent = account.slice(0, 6) + "…" + account.slice(-4);
-    connectBtn.textContent = "Wallet connected";
+    setAccount(accounts[0]);
     return account;
+  }
+
+  function setAccount(next) {
+    account = next || null;
+    $("pg-account").textContent = account ? account.slice(0, 6) + "…" + account.slice(-4) : "";
+    connectBtn.textContent = account ? "Wallet connected" : "Connect wallet";
+    if (account) status("");
+  }
+
+  async function connectWalletConnect() {
+    wcButton.disabled = true;
+    try {
+      status("Opening WalletConnect...");
+      const { EthereumProvider } = await import("https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.26.0/+esm");
+      const provider = await EthereumProvider.init({
+        projectId: wcButton.dataset.projectId,
+        chains: [8453],
+        optionalChains: [84532],
+        showQrModal: true,
+        metadata: { name: "x402 Agent Store", description: "Pay-per-request web scraping in USDC on Base.",
+                    url: location.origin, icons: [] },
+      });
+      await provider.enable();
+      wcProvider = provider;
+      provider.on("accountsChanged", (accounts) => setAccount(accounts[0]));
+      provider.on("disconnect", () => { wcProvider = null; setAccount(null); });
+      $("pg-nowallet").hidden = true;
+      setAccount(provider.accounts[0]);
+    } catch (err) {
+      status(err && err.message ? "WalletConnect: " + err.message : "WalletConnect was closed.", true);
+    } finally {
+      wcButton.disabled = false;
+    }
   }
 
   async function ensureChain(chainId) {
@@ -309,7 +348,12 @@ _SCRIPT = """
       status("Done!");
     } catch (err) {
       const msg = err && err.code === 4001 ? "Signature cancelled in wallet. Nothing was charged." : (err.message || String(err));
-      status(msg, true);
+      if (err && err.quiet) {
+        status("");
+        $("pg-steps").hidden = true;
+      } else {
+        status(msg, true);
+      }
       document.querySelectorAll("#pg-steps li.active").forEach((li) => li.classList.remove("active"));
     } finally {
       run.disabled = false;
@@ -317,7 +361,8 @@ _SCRIPT = """
   }
 
   sku.addEventListener("change", syncSku);
-  connectBtn.addEventListener("click", () => connect().then(() => status("Wallet connected.")).catch((e) => status(e.message || String(e), true)));
+  connectBtn.addEventListener("click", () => connect().catch((e) => status(e.quiet ? "" : (e.message || String(e)), !e.quiet)));
+  if (wcButton) wcButton.addEventListener("click", connectWalletConnect);
   run.addEventListener("click", play);
   $("pg-copy").addEventListener("click", async () => {
     await navigator.clipboard.writeText(lastText);
@@ -325,11 +370,7 @@ _SCRIPT = """
     setTimeout(() => { $("pg-copy").textContent = "Copy Markdown"; }, 1500);
   });
   if (wallet() && wallet().on) {
-    wallet().on("accountsChanged", (accounts) => {
-      account = accounts[0] || null;
-      $("pg-account").textContent = account ? account.slice(0, 6) + "…" + account.slice(-4) : "";
-      connectBtn.textContent = account ? "Wallet connected" : "Connect wallet";
-    });
+    wallet().on("accountsChanged", (accounts) => setAccount(accounts[0]));
   }
   syncSku();
 })();
@@ -337,7 +378,13 @@ _SCRIPT = """
 """
 
 
-def playground_html(products: tuple[Product, ...]) -> str:
+def playground_html(products: tuple[Product, ...], walletconnect_project_id: str = "") -> str:
+    wc_button = ""
+    if walletconnect_project_id:
+        wc_button = (
+            '<button type="button" class="pg-btn ghost" id="pg-wc" '
+            f'data-project-id="{html.escape(walletconnect_project_id)}">WalletConnect (QR)</button>'
+        )
     options = []
     for product in products:
         label = PLAYGROUND_LABELS.get(product.sku)
@@ -360,6 +407,7 @@ def playground_html(products: tuple[Product, ...]) -> str:
       </div>
       <div class="pg-actions">
         <button type="button" class="pg-btn ghost" id="pg-connect">Connect wallet</button>
+        {wc_button}
         <button type="button" class="pg-btn primary" id="pg-run">Scrape ($0.01)</button>
         <span class="pg-account" id="pg-account"></span>
       </div>
@@ -368,7 +416,7 @@ def playground_html(products: tuple[Product, ...]) -> str:
         <p id="pg-nowallet-text"></p>
         <div class="pg-links" id="pg-wallet-links"></div>
       </div>
-      <ol class="pg-steps" id="pg-steps">
+      <ol class="pg-steps" id="pg-steps" hidden>
         <li data-step="connect">Connecting Wallet</li>
         <li data-step="sign">Awaiting Wallet Signature</li>
         <li data-step="settle">Settling x402 Transfer</li>
