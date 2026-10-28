@@ -1,5 +1,6 @@
 import os
 
+from x402.extensions.bazaar import bazaar_resource_server_extension
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
 from x402.http.types import RouteConfig
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
@@ -48,7 +49,7 @@ def paid_routes(settings: Settings) -> dict[str, RouteConfig]:
         description=scrape.description,
         service_name=scrape.name[:32],
         tags=list(scrape.tags)[:5],
-        extensions=None,
+        extensions=bazaar_extension(scrape, body_type="json"),
     )
     return routes
 
@@ -72,6 +73,7 @@ def resource_server(settings: Settings) -> x402ResourceServer:
         clients = [HTTPFacilitatorClient(FacilitatorConfig(url=url)) for url in urls]
 
     server = x402ResourceServer(clients)
+    server.register_extension(bazaar_resource_server_extension)
     for network in networks:
         server.register(network, ExactEvmServerScheme())
     return server

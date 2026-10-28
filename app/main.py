@@ -17,7 +17,7 @@ from x402.http.types import PaywallConfig
 
 from app.catalog import PRODUCTS, public_catalog
 from app.config import get_settings
-from app.discovery import llms_txt, x402_openapi_extension
+from app.discovery import ai_plugin_manifest, llms_txt, mcp_manifest, x402_openapi_extension
 from app.models import (
     LinksResponse,
     OutlineResponse,
@@ -44,11 +44,8 @@ log.info(
 app = FastAPI(
     title="x402 Markdown Scraper",
     description=(
-        "Penny-priced web extraction APIs for AI agents. "
-        "Paid routes charge Exact EVM USDC on Base (eip155:8453) via x402. "
-        "Primary SKU: GET /v1/scrape?url= costs $0.01 USDC. "
-        "Unpaid calls return HTTP 402 with a PAYMENT-REQUIRED header. "
-        "Free discovery: GET /health, GET /llms.txt, GET /openapi.json, GET /v1/catalog."
+        "Converts any web article URL into clean, stripped Markdown for AI context windows. "
+        "GET /v1/scrape?url= costs $0.01 USDC on Base via x402. Category: Data."
     ),
     version="0.3.0",
 )
@@ -151,6 +148,17 @@ async def health() -> dict[str, str]:
 @app.get("/llms.txt", response_class=PlainTextResponse, include_in_schema=True)
 async def llms() -> str:
     return llms_txt(settings)
+
+
+@app.get("/.well-known/mcp")
+@app.get("/.well-known/mcp.json")
+async def well_known_mcp() -> dict:
+    return mcp_manifest(settings)
+
+
+@app.get("/.well-known/ai-plugin.json")
+async def well_known_ai_plugin() -> dict:
+    return ai_plugin_manifest(settings)
 
 
 @app.get("/v1/catalog")
