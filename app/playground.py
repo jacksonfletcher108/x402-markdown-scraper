@@ -43,6 +43,11 @@ PLAYGROUND_CSS = """
     .pg-out-head a { font-size:.85rem; color:var(--accent); }
     .pg-out-head .pg-btn { margin-left:auto; padding:.3rem .7rem; font-size:.85rem; }
     #pg-result { display:block; white-space:pre-wrap; word-break:break-word; max-height:28rem; }
+    .pg-nowallet { margin-top:.9rem; padding:.9rem 1rem; border:1px solid #fde68a; background:#fffbeb; border-radius:10px; }
+    .pg-nowallet[hidden] { display:none; }
+    .pg-nowallet p { margin:.3rem 0 .6rem; font-size:.9rem; color:var(--muted); }
+    .pg-links { display:flex; flex-wrap:wrap; gap:.5rem; }
+    .pg-links a { text-decoration:none; font-size:.9rem; font-weight:600; padding:.45rem .8rem; border-radius:8px; background:var(--ink); color:#fff; }
     .pg-toast { position:fixed; left:50%; bottom:1.25rem; transform:translateX(-50%); width:min(32rem, calc(100% - 2rem)); background:var(--ink); color:#fff; border-radius:10px; padding:.8rem 1rem; display:flex; gap:.75rem; align-items:center; box-shadow:0 10px 25px rgba(15,23,42,.25); z-index:10; }
     .pg-toast[hidden] { display:none; }
     .pg-toast span { flex:1; font-size:.9rem; }
@@ -65,8 +70,40 @@ _SCRIPT = """
   let account = null;
   let lastText = "";
 
-  const wallet = () => window.ethereum;
+  // EIP-6963: wallets that don't claim window.ethereum still announce themselves.
+  const announced = [];
+  window.addEventListener("eip6963:announceProvider", (event) => {
+    if (event.detail && event.detail.provider) announced.push(event.detail.provider);
+  });
+  window.dispatchEvent(new Event("eip6963:requestProvider"));
+  const wallet = () => window.ethereum || announced[0];
   const option = () => sku.options[sku.selectedIndex];
+  const isMobile = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+
+  function showNoWallet() {
+    const links = $("pg-wallet-links");
+    links.replaceChildren();
+    const here = location.host + location.pathname + "#playground";
+    const items = isMobile()
+      ? [["Open in MetaMask app", "https://metamask.app.link/dapp/" + here],
+         ["Open in Coinbase Wallet app", "https://go.cb-w.com/dapp?cb_url=" + encodeURIComponent("https://" + here)]]
+      : [["Install MetaMask", "https://metamask.io/download/"],
+         ["Install Coinbase Wallet", "https://www.coinbase.com/wallet/downloads"],
+         ["Install Rabby", "https://rabby.io/"]];
+    items.forEach(([label, href]) => {
+      const a = document.createElement("a");
+      a.textContent = label;
+      a.href = href;
+      a.target = "_blank";
+      a.rel = "noopener";
+      links.appendChild(a);
+    });
+    $("pg-nowallet-text").textContent = isMobile()
+      ? "Mobile browsers can't reach a wallet. Open this page inside your wallet app's browser, then tap Connect wallet again."
+      : "Install a browser wallet extension, add a little USDC on Base (no ETH needed for gas), then reload this page.";
+    $("pg-nowallet").hidden = false;
+  }
 
   function decodeB64Json(value) {
     let s = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -117,12 +154,20 @@ _SCRIPT = """
 
   async function connect() {
     if (!wallet()) {
-      toast("No browser wallet found. Install MetaMask, Coinbase Wallet, or Rabby, then reload.");
+      showNoWallet();
       throw new Error("No browser wallet found.");
     }
+    $("pg-nowallet").hidden = true;
     setStep("connect");
     status("Connecting Wallet...");
-    const accounts = await wallet().request({ method: "eth_requestAccounts" });
+    let accounts;
+    try {
+      accounts = await wallet().request({ method: "eth_requestAccounts" });
+    } catch (err) {
+      if (err && err.code === -32002) throw new Error("A connection request is already open. Click your wallet extension icon to approve it.");
+      if (err && err.code === 4001) throw new Error("Connection rejected in wallet.");
+      throw err;
+    }
     account = accounts[0];
     $("pg-account").textContent = account.slice(0, 6) + "…" + account.slice(-4);
     connectBtn.textContent = "Wallet connected";
@@ -317,6 +362,11 @@ def playground_html(products: tuple[Product, ...]) -> str:
         <button type="button" class="pg-btn ghost" id="pg-connect">Connect wallet</button>
         <button type="button" class="pg-btn primary" id="pg-run">Scrape ($0.01)</button>
         <span class="pg-account" id="pg-account"></span>
+      </div>
+      <div class="pg-nowallet" id="pg-nowallet" hidden>
+        <strong>No browser wallet detected</strong>
+        <p id="pg-nowallet-text"></p>
+        <div class="pg-links" id="pg-wallet-links"></div>
       </div>
       <ol class="pg-steps" id="pg-steps">
         <li data-step="connect">Connecting Wallet</li>

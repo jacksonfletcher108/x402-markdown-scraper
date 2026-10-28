@@ -180,7 +180,15 @@ class DiscoveryRouteTests(unittest.TestCase):
         ):
             self.assertIn(f'<option value="{path}"', text)
             self.assertIn(f'data-price="{price}"', text)
-        for marker in ("PAYMENT-REQUIRED", "PAYMENT-SIGNATURE", "eth_signTypedData_v4", "TransferWithAuthorization"):
+        for marker in (
+            "PAYMENT-REQUIRED",
+            "PAYMENT-SIGNATURE",
+            "eth_signTypedData_v4",
+            "TransferWithAuthorization",
+            'id="pg-nowallet"',
+            "eip6963:requestProvider",
+            "metamask.app.link/dapp/",
+        ):
             self.assertIn(marker, text)
 
     def test_swagger_docs_unpaid(self) -> None:
