@@ -272,7 +272,7 @@ def _storefront_html() -> str:
     </nav>
     <h2>Featured SKUs</h2>
     <div class="grid">{"".join(cards)}</div>
-    {playground_html(PRODUCTS)}
+    {playground_html(PRODUCTS, settings.walletconnect_project_id)}
     <h2>Pay a 402 from a client</h2>
     <p class="muted">Probe unpaid, read <code>PAYMENT-REQUIRED</code>, settle Exact USDC on <code>eip155:8453</code>, retry with <code>PAYMENT-SIGNATURE</code>.</p>
     <div class="tabs">
