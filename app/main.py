@@ -21,6 +21,7 @@ from app.catalog import PRODUCTS, public_catalog
 from app.config import get_settings
 from app.crawl import deep_crawl
 from app.discovery import ai_plugin_manifest, llms_txt, mcp_manifest, x402_openapi_extension
+from app.mcp_server import McpServer
 from app.models import (
     CrawlRequest,
     CrawlResponse,
@@ -591,6 +592,38 @@ async def outline_get(url: str = Query(..., description="Public http(s) URL to f
 async def links_get(url: str = Query(..., description="Public http(s) URL to fetch.")) -> LinksResponse:
     page = await _page(url)
     return LinksResponse(url=page.url, links=page.links, source_status=page.source_status)
+
+
+mcp = McpServer(server, settings, _PUBLIC_HOST)
+_MCP_HANDLERS = {
+    "scrape.md": lambda args: scrape_get(url=args["url"], pay_for_source=True),
+    "page.summary": lambda args: summary_get(url=args["url"]),
+    "page.metadata": lambda args: metadata_get(url=args["url"]),
+    "doc.pdf": lambda args: parse_pdf_get(url=args["url"]),
+    "site.crawl": lambda args: _crawl(args["url"], _depth(args.get("max_depth", 2))),
+}
+for _product in PRODUCTS:
+    if _product.sku in _MCP_HANDLERS:
+        mcp.tool(_product, _MCP_HANDLERS[_product.sku])
+
+
+def _depth(value) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="max_depth must be an integer 1-3") from None
+
+
+@app.post("/mcp", tags=["Discovery"], summary="MCP Streamable HTTP endpoint (tool calls paid via x402)")
+async def mcp_post(request: Request) -> Response:
+    """JSON-RPC over Streamable HTTP. tools/call is paid with x402 in params._meta["x402/payment"]."""
+    return await mcp.handle(request)
+
+
+@app.api_route("/mcp", methods=["GET", "DELETE"], include_in_schema=False)
+async def mcp_no_stream() -> Response:
+    # Stateless server: no SSE stream and no sessions to delete.
+    return Response(status_code=405, headers={"Allow": "POST"})
 
 
 _PAID_OPENAPI_PATHS = {

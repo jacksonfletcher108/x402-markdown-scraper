@@ -324,6 +324,104 @@ class FulfillmentMockTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(second.cached)
 
 
+class McpEndpointTests(unittest.TestCase):
+    """JSON-RPC over /mcp. Tool calls hit the live facilitator once for requirements."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.client = TestClient(app)
+
+    def _rpc(self, method: str, params: dict | None = None) -> dict:
+        response = self.client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}},
+            headers={"Accept": "application/json, text/event-stream"},
+        )
+        self.assertEqual(response.status_code, 200, response.text[:200])
+        return response.json()
+
+    def _call(self, name: str, meta: dict | None = None) -> dict:
+        params = {"name": name, "arguments": {"url": "https://example.com/article"}}
+        if meta:
+            params["_meta"] = meta
+        return self._rpc("tools/call", params)["result"]
+
+    def test_initialize(self) -> None:
+        result = self._rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}})["result"]
+        self.assertEqual(result["protocolVersion"], "2025-06-18")
+        self.assertIn("tools", result["capabilities"])
+        self.assertEqual(result["serverInfo"]["name"], "x402-markdown-scraper")
+
+    def test_notification_accepted(self) -> None:
+        response = self.client.post("/mcp", json={"jsonrpc": "2.0", "method": "notifications/initialized"})
+        self.assertEqual(response.status_code, 202)
+
+    def test_tools_list_matches_featured_skus(self) -> None:
+        tools = {tool["name"]: tool for tool in self._rpc("tools/list")["result"]["tools"]}
+        self.assertEqual(set(tools), {"scrape_md", "page_summary", "page_metadata", "doc_pdf", "site_crawl"})
+        self.assertIn("$0.15", tools["site_crawl"]["description"])
+        self.assertIn("max_depth", tools["site_crawl"]["inputSchema"]["properties"])
+
+    def test_unknown_method_and_get(self) -> None:
+        self.assertEqual(self._rpc("resources/list")["error"]["code"], -32601)
+        self.assertEqual(self.client.get("/mcp").status_code, 405)
+
+    def test_unpaid_call_returns_payment_required(self) -> None:
+        result = self._call("page_summary")
+        self.assertTrue(result["isError"])
+        option = next(
+            item for item in result["structuredContent"]["accepts"] if item["network"] == "eip155:8453"
+        )
+        self.assertEqual(option["amount"], "20000")
+        self.assertEqual(result["structuredContent"]["resource"]["url"], "mcp://tool/page_summary")
+
+    def _payment_meta(self, name: str) -> dict:
+        accepted = next(
+            item for item in self._call(name)["structuredContent"]["accepts"] if item["network"] == "eip155:8453"
+        )
+        return {"x402/payment": {"x402Version": 2, "accepted": accepted, "payload": {"signature": "0xtest"}}}
+
+    def test_paid_call_settles_and_returns_markdown(self) -> None:
+        from x402.schemas import SettleResponse, VerifyResponse
+
+        from app.main import server
+
+        cache._items.clear()
+        meta = self._payment_meta("scrape_md")
+        settle = AsyncMock(
+            return_value=SettleResponse(success=True, transaction="0xabc", network="eip155:8453")
+        )
+        with (
+            patch("app.main.fetch_page", AsyncMock(return_value=_sample_page())),
+            patch.object(server, "verify_payment", AsyncMock(return_value=VerifyResponse(is_valid=True))),
+            patch.object(server, "settle_payment", settle),
+        ):
+            result = self._call("scrape_md", meta)
+        self.assertFalse(result["isError"], result)
+        self.assertEqual(result["structuredContent"]["sku"], "scrape.md")
+        self.assertIn("Widget Launch", result["structuredContent"]["markdown"])
+        self.assertEqual(result["_meta"]["x402/payment-response"]["transaction"], "0xabc")
+        settle.assert_awaited_once()
+
+    def test_failed_fetch_is_not_settled(self) -> None:
+        from x402.schemas import VerifyResponse
+
+        from app.main import server
+
+        cache._items.clear()
+        meta = self._payment_meta("scrape_md")
+        settle = AsyncMock()
+        with (
+            patch("app.main.fetch_page", AsyncMock(side_effect=ScrapeError("upstream 404", 404))),
+            patch.object(server, "verify_payment", AsyncMock(return_value=VerifyResponse(is_valid=True))),
+            patch.object(server, "settle_payment", settle),
+        ):
+            result = self._call("scrape_md", meta)
+        self.assertTrue(result["isError"])
+        self.assertIn("upstream 404", result["content"][0]["text"])
+        settle.assert_not_awaited()
+
+
 def _public_dns(host, *args, **kwargs):
     return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("1.1.1.1", 0))]
 

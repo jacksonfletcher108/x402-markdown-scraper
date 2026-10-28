@@ -398,6 +398,7 @@ def public_catalog(
                 "GET /openapi.json",
                 "GET /v1/catalog",
                 "GET /.well-known/mcp",
+                "POST /mcp (initialize, tools/list; tools/call is paid)",
                 "GET /.well-known/ai-plugin.json",
             ],
             "note": "Call a paid path without PAYMENT-SIGNATURE to receive PAYMENT-REQUIRED.",
