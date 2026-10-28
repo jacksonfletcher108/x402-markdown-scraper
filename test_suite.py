@@ -195,8 +195,10 @@ class DiscoveryRouteTests(unittest.TestCase):
         from app.playground import playground_html
 
         self.assertNotIn('id="pg-wc"', playground_html(PRODUCTS))
+        self.assertNotIn("pg-hint", playground_html(PRODUCTS))
         page = playground_html(PRODUCTS, "abc123")
         self.assertIn('id="pg-wc" data-project-id="abc123"', page)
+        self.assertIn("not your phone camera", page)
         self.assertIn("@walletconnect/ethereum-provider@2.26.0", page)
         self.assertIn('id="pg-steps" hidden', page)
         self.assertIn('id="pg-wc"', self.client.get("/").text)
