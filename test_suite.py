@@ -141,6 +141,43 @@ class DiscoveryRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
 
+    def test_storefront_portal(self) -> None:
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/html", response.headers.get("content-type", ""))
+        text = response.text
+        for path in (
+            "/v1/scrape",
+            "/v1/summary",
+            "/v1/extract-metadata",
+            "/v1/parse-pdf",
+            "/v1/deep-crawl",
+            "/docs",
+            "/llms.txt",
+            "/openapi.json",
+            "/.well-known/mcp",
+        ):
+            self.assertIn(path, text)
+        self.assertIn("$0.01", text)
+        self.assertIn("$0.15", text)
+        self.assertIn("Python (httpx)", text)
+        self.assertIn("JavaScript (fetch)", text)
+        self.assertIn("cURL", text)
+        self.assertIn("PAYMENT-REQUIRED", text)
+        self.assertIn("eip155:8453", text)
+        self.assertIn(Settings().pay_to(), text)
+        self.assertTrue("EVM / Base USDC Active" in text or "Base Sepolia" in text)
+
+    def test_swagger_docs_unpaid(self) -> None:
+        response = self.client.get("/docs")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("swagger", response.text.lower())
+        spec = self.client.get("/openapi.json").json()
+        scrape = spec["paths"]["/v1/scrape"]["get"]
+        self.assertIn("$0.01", scrape.get("summary", ""))
+        self.assertEqual(scrape["x-x402"]["network"], "eip155:8453")
+        self.assertEqual(scrape["x-x402"]["scheme"], "exact")
+
     def test_catalog(self) -> None:
         response = self.client.get("/v1/catalog")
         self.assertEqual(response.status_code, 200)

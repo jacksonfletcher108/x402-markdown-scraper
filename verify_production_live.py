@@ -90,6 +90,18 @@ def verify_health(suite: Suite, client: httpx.Client) -> None:
     )
 
 
+def verify_root(suite: Suite, client: httpx.Client) -> None:
+    print("\n## GET /")
+    response = client.get("/")
+    suite.check(response.status_code == 200, "status is 200", str(response.status_code))
+    suite.check(response.status_code != 402, "root is not paywalled")
+    ctype = response.headers.get("content-type", "")
+    suite.check("text/html" in ctype, "content-type is HTML", ctype)
+    for path in ("/v1/scrape", "/v1/summary", "/v1/extract-metadata", "/v1/parse-pdf", "/v1/deep-crawl"):
+        suite.check(path in response.text, f"root lists {path}")
+    suite.rows.append(Row("GET /", str(response.status_code), "portal", "n/a (public HTML)"))
+
+
 def verify_catalog(suite: Suite, client: httpx.Client) -> None:
     print("\n## GET /v1/catalog")
     response = client.get("/v1/catalog")
@@ -245,6 +257,7 @@ def main() -> int:
     try:
         with httpx.Client(base_url=base, timeout=args.timeout, follow_redirects=True) as client:
             verify_health(suite, client)
+            verify_root(suite, client)
             verify_catalog(suite, client)
             verify_discovery(suite, client)
             for path, price, amount in FEATURED:

@@ -2,11 +2,20 @@ from pydantic import BaseModel, Field, HttpUrl
 
 
 class ScrapeRequest(BaseModel):
-    url: HttpUrl = Field(description="Public http(s) URL to fetch.")
+    url: HttpUrl = Field(
+        description="Public http(s) URL to fetch.",
+        examples=["https://example.com"],
+    )
     pay_for_source: bool = Field(
         default=True,
         description="If the source returns HTTP 402, attach x402 payment headers and retry.",
     )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{"url": "https://example.com", "pay_for_source": True}],
+        }
+    }
 
 
 class ScrapeResponse(BaseModel):
@@ -68,9 +77,18 @@ class PdfParseResponse(BaseModel):
 
 
 class CrawlRequest(BaseModel):
-    url: HttpUrl = Field(description="Public http(s) starting URL.")
-    max_depth: int = Field(default=2, ge=1, le=3)
+    url: HttpUrl = Field(
+        description="Public http(s) starting URL.",
+        examples=["https://example.com"],
+    )
+    max_depth: int = Field(default=2, ge=1, le=3, description="Internal link depth, 1-3.")
     pay_for_source: bool = True
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{"url": "https://example.com", "max_depth": 2}],
+        }
+    }
 
 
 class CrawlPage(BaseModel):

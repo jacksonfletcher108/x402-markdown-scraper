@@ -2,6 +2,7 @@ from app.compat import install_optional_stubs
 
 install_optional_stubs()
 
+import html
 import logging
 
 from fastapi import FastAPI, HTTPException, Query
@@ -51,14 +52,26 @@ log.info(
     settings.facilitator_kind(),
 )
 
+_OPENAPI_TAGS = [
+    {"name": "Discovery", "description": "Unpaid machine-readable catalog, health, and agent manifests."},
+    {"name": "Paid SKUs", "description": "x402 v2 Exact USDC on Base (eip155:8453). Unpaid calls return HTTP 402."},
+]
+
 app = FastAPI(
     title="x402 Markdown Scraper",
     description=(
-        "Converts any web article URL into clean, stripped Markdown for AI context windows. "
-        "GET /v1/scrape $0.01, /v1/summary $0.02, /v1/extract-metadata $0.01, "
-        "/v1/parse-pdf $0.05, /v1/deep-crawl $0.15 USDC via x402 on Base and optional Solana."
+        "Penny SKUs for AI agents: URL to Markdown, summary, metadata, PDF parse, and deep crawl. "
+        "Pay Exact USDC on Base (`eip155:8453`) over HTTP 402 (x402 v2). "
+        "Unpaid probes return `PAYMENT-REQUIRED`; retry with `PAYMENT-SIGNATURE`. "
+        "Featured prices: `/v1/scrape` $0.01, `/v1/summary` $0.02, `/v1/extract-metadata` $0.01, "
+        "`/v1/parse-pdf` $0.05, `/v1/deep-crawl` $0.15."
     ),
     version="0.5.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    openapi_tags=_OPENAPI_TAGS,
+    swagger_ui_parameters={"displayRequestDuration": True, "tryItOutEnabled": True},
 )
 
 server = attach_payment_logs(resource_server(settings))
@@ -115,62 +128,197 @@ app.add_middleware(
 app.add_middleware(CoinbaseWalletCompatMiddleware)
 
 
+_FEATURED_SKUS = ("scrape.md", "page.summary", "page.metadata", "doc.pdf", "site.crawl")
+_PUBLIC_HOST = "https://x402-markdown-scraper.onrender.com"
+
+
+def _sku_params(product) -> str:
+    keys = list((product.query_schema or {}).get("properties") or {"url": {}})
+    required = set((product.query_schema or {}).get("required") or ["url"])
+    parts = []
+    for key in keys:
+        mark = "required" if key in required else "optional"
+        parts.append(f"<code>{html.escape(key)}</code> <span class=\"muted\">{mark}</span>")
+    return " · ".join(parts) or "<code>url</code> <span class=\"muted\">required</span>"
+
+
 def _storefront_html() -> str:
     ready = settlement_ready(settings)
+    pay_to = html.escape(settings.pay_to())
+    badge = "EVM / Base USDC Active" if ready else "Base Sepolia — set PAYMENT_WALLET_ADDRESS"
+    badge_class = "ok" if ready else "warn"
     warning = ""
     if not ready:
-        warning = """
-        <p style="padding:1rem;background:#fef3c7;border-radius:8px">
-          <strong>Why Coinbase Wallet says insufficient funds:</strong>
-          your USDC is on <em>Base mainnet</em>. This shop is still on
-          <em>Base Sepolia</em> because <code>X402_PAY_TO</code> is a placeholder.
-          Put your Base wallet in <code>PAYMENT_WALLET_ADDRESS</code> and restart to accept real $0.01 USDC.
-        </p>
-        """
-    items = "\n".join(
-        f"<li><a href=\"{product.path}?url=https://example.com\"><strong>{product.price}</strong> {product.name}</a> — {product.description}</li>"
-        for product in PRODUCTS
+        warning = (
+            "<div class=\"banner\">This shop is on Base Sepolia until "
+            "<code>PAYMENT_WALLET_ADDRESS</code> is a real Base wallet. "
+            "Mainnet USDC will not settle here yet.</div>"
+        )
+    cards = []
+    for product in PRODUCTS:
+        if product.sku not in _FEATURED_SKUS:
+            continue
+        cards.append(
+            "<article class=\"card\">"
+            f"<div class=\"price\">{html.escape(product.price)} USDC</div>"
+            f"<h3>{html.escape(product.name)}</h3>"
+            f"<p class=\"path\"><code>GET</code> <code>POST</code> {html.escape(product.path)}</p>"
+            f"<p>{html.escape(product.description)}</p>"
+            f"<p class=\"params\">Params: {_sku_params(product)}</p>"
+            f"<a class=\"try\" href=\"{html.escape(product.path)}?url=https://example.com\">Open unpaid 402</a>"
+            "</article>"
+        )
+    python_src = html.escape(
+        "import os\n"
+        "import httpx\n"
+        "from eth_account import Account\n"
+        "from x402 import x402Client\n"
+        "from x402.http.clients import x402HttpxClient\n"
+        "from x402.mechanisms.evm import EthAccountSigner\n"
+        "from x402.mechanisms.evm.exact.register import register_exact_evm_client\n"
+        "\n"
+        f'URL = "{_PUBLIC_HOST}/v1/scrape"\n'
+        'PARAMS = {"url": "https://example.com"}\n'
+        "\n"
+        "# 1) Unpaid probe — HTTP 402 + PAYMENT-REQUIRED (x402 v2, eip155:8453)\n"
+        "probe = httpx.get(URL, params=PARAMS)\n"
+        'print(probe.status_code, probe.headers.get("PAYMENT-REQUIRED", "")[:64])\n'
+        "\n"
+        "# 2) Settle Exact USDC on Base with the x402 client SDK\n"
+        'account = Account.from_key(os.environ["EVM_PRIVATE_KEY"])\n'
+        "client = x402Client()\n"
+        "register_exact_evm_client(client, EthAccountSigner(account))\n"
+        "with x402HttpxClient(client) as http:\n"
+        "    paid = http.get(URL, params=PARAMS)\n"
+        '    print(paid.status_code, paid.json().get("sku"))\n'
     )
-    networks = ", ".join(settings.networks())
+    js_src = html.escape(
+        f'const url = "{_PUBLIC_HOST}/v1/scrape?url=https://example.com";\n'
+        "const unpaid = await fetch(url);\n"
+        'const challenge = unpaid.headers.get("PAYMENT-REQUIRED");\n'
+        "console.log(unpaid.status, challenge);\n"
+        "// 402: decode PAYMENT-REQUIRED, sign Exact USDC on Base (eip155:8453)\n"
+        "// with an x402 EVM client, then retry:\n"
+        "const paid = await fetch(url, {\n"
+        '  headers: { "PAYMENT-SIGNATURE": signature },\n'
+        "});\n"
+        "console.log(paid.status, await paid.json());\n"
+    )
+    curl_src = html.escape(
+        f'curl -i "{_PUBLIC_HOST}/v1/scrape?url=https://example.com"\n'
+        "# HTTP/2 402 Payment Required\n"
+        "# PAYMENT-REQUIRED: eyJ...   (x402 v2 Exact USDC, eip155:8453)\n"
+        "# Retry the same URL with header PAYMENT-SIGNATURE from the x402 SDK.\n"
+    )
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>x402 Agent Store</title>
+  <style>
+    :root {{ --bg:#f8fafc; --ink:#0f172a; --muted:#475569; --line:#e2e8f0; --accent:#0f766e; --card:#fff; }}
+    * {{ box-sizing:border-box; }}
+    body {{ margin:0; font:16px/1.5 ui-sans-serif,system-ui,sans-serif; color:var(--ink); background:var(--bg); }}
+    header, main {{ max-width:1080px; margin:0 auto; padding:1.25rem 1rem; }}
+    header {{ display:flex; flex-wrap:wrap; gap:1rem; justify-content:space-between; align-items:flex-start; }}
+    h1 {{ margin:0 0 .25rem; font-size:1.65rem; }}
+    .muted {{ color:var(--muted); }}
+    .wallet {{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:.75rem 1rem; max-width:28rem; }}
+    .wallet code {{ font-size:.82rem; word-break:break-all; }}
+    .badge {{ display:inline-block; margin-top:.4rem; padding:.15rem .55rem; border-radius:999px; font-size:.78rem; font-weight:600; }}
+    .badge.ok {{ background:#d1fae5; color:#065f46; }}
+    .badge.warn {{ background:#fef3c7; color:#92400e; }}
+    .nav {{ display:flex; flex-wrap:wrap; gap:.5rem; margin:0 0 1.25rem; }}
+    .nav a {{ background:var(--ink); color:#fff; text-decoration:none; padding:.45rem .8rem; border-radius:8px; font-size:.9rem; }}
+    .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:.9rem; }}
+    .card {{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:1rem; display:flex; flex-direction:column; gap:.4rem; }}
+    .price {{ font-weight:700; color:var(--accent); }}
+    .card h3 {{ margin:0; font-size:1.05rem; }}
+    .path code {{ background:#f1f5f9; padding:.1rem .35rem; border-radius:4px; font-size:.8rem; }}
+    .try {{ margin-top:auto; color:var(--accent); font-weight:600; }}
+    .banner {{ background:#fef3c7; border-radius:8px; padding:.75rem 1rem; margin-bottom:1rem; }}
+    .tabs {{ display:flex; gap:.35rem; margin:1rem 0 .5rem; }}
+    .tabs button {{ border:1px solid var(--line); background:#fff; border-radius:8px; padding:.35rem .7rem; cursor:pointer; }}
+    .tabs button.active {{ background:var(--ink); color:#fff; }}
+    pre {{ background:#0f172a; color:#e2e8f0; padding:1rem; border-radius:12px; overflow:auto; font-size:.82rem; display:none; }}
+    pre.active {{ display:block; }}
+    .copy {{ margin-left:.5rem; }}
+  </style>
 </head>
-<body style="font-family:system-ui;max-width:44rem;margin:3rem auto;padding:0 1rem;line-height:1.5">
-  <h1>x402 Agent Store</h1>
-  <p>Penny SKUs for AI agents. Pay USDC over HTTP 402. Free catalog: <a href="/v1/catalog"><code>GET /v1/catalog</code></a>.</p>
-  {warning}
-  <p>Networks: <code>{networks}</code>. Pay to <code>{settings.pay_to()}</code>.</p>
-  <p>Use <strong>Chrome or Edge</strong> for Coinbase Smart Wallet (not an embedded browser).</p>
-  <h2>Products</h2>
-  <ul>{items}</ul>
+<body>
+  <header>
+    <div>
+      <h1>x402 Agent Store</h1>
+      <p class="muted">Human portal and agent gateway. Exact USDC on Base via HTTP 402.</p>
+    </div>
+    <div class="wallet">
+      <div class="muted">Base payout address</div>
+      <code id="pay-to">{pay_to}</code>
+      <div class="badge {badge_class}">{html.escape(badge)}</div>
+    </div>
+  </header>
+  <main>
+    {warning}
+    <nav class="nav" aria-label="Discovery">
+      <a href="/docs">Swagger /docs</a>
+      <a href="/llms.txt">llms.txt</a>
+      <a href="/openapi.json">openapi.json</a>
+      <a href="/.well-known/mcp">/.well-known/mcp</a>
+    </nav>
+    <h2>Featured SKUs</h2>
+    <div class="grid">{"".join(cards)}</div>
+    <h2>Pay a 402 from a client</h2>
+    <p class="muted">Probe unpaid, read <code>PAYMENT-REQUIRED</code>, settle Exact USDC on <code>eip155:8453</code>, retry with <code>PAYMENT-SIGNATURE</code>.</p>
+    <div class="tabs">
+      <button type="button" class="active" data-tab="python">Python (httpx)</button>
+      <button type="button" data-tab="js">JavaScript (fetch)</button>
+      <button type="button" data-tab="curl">cURL</button>
+      <button type="button" class="copy" id="copy-btn">Copy</button>
+    </div>
+    <pre class="active" id="python">{python_src}</pre>
+    <pre id="js">{js_src}</pre>
+    <pre id="curl">{curl_src}</pre>
+  </main>
+  <script>
+    const tabs = document.querySelectorAll(".tabs button[data-tab]");
+    const panes = {{ python: document.getElementById("python"), js: document.getElementById("js"), curl: document.getElementById("curl") }};
+    let current = "python";
+    tabs.forEach((btn) => btn.addEventListener("click", () => {{
+      current = btn.getAttribute("data-tab");
+      tabs.forEach((b) => b.classList.toggle("active", b === btn));
+      Object.entries(panes).forEach(([id, el]) => el.classList.toggle("active", id === current));
+    }}));
+    document.getElementById("copy-btn").addEventListener("click", async () => {{
+      await navigator.clipboard.writeText(panes[current].innerText);
+    }});
+  </script>
 </body>
 </html>
 """
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, tags=["Discovery"], summary="Human developer portal")
 async def index() -> str:
     return _storefront_html()
 
 
-@app.get("/health")
+@app.get("/health", tags=["Discovery"], summary="Liveness probe")
 async def health() -> dict[str, str]:
     """Unpaid keep-alive probe. Do not put work here."""
     return {"status": "ok"}
 
 
-@app.get("/llms.txt", response_class=PlainTextResponse, include_in_schema=True)
+@app.get("/llms.txt", response_class=PlainTextResponse, include_in_schema=True, tags=["Discovery"], summary="llms.txt agent digest")
 async def llms() -> str:
+    """Unpaid. Lists SKUs and Exact USDC prices for language-model crawlers."""
     return llms_txt(settings)
 
 
-@app.get("/.well-known/mcp")
-@app.get("/.well-known/mcp.json")
+@app.get("/.well-known/mcp", tags=["Discovery"], summary="MCP tool card")
+@app.get("/.well-known/mcp.json", tags=["Discovery"], include_in_schema=False)
 async def well_known_mcp() -> dict:
+    """Unpaid machine-readable tool list for MCP / x402 agents."""
     return mcp_manifest(settings)
 
 
@@ -179,7 +327,7 @@ async def well_known_ai_plugin() -> dict:
     return ai_plugin_manifest(settings)
 
 
-@app.get("/v1/catalog")
+@app.get("/v1/catalog", tags=["Discovery"], summary="Machine-readable SKU catalog")
 async def catalog() -> dict:
     return public_catalog(
         settings.pay_to(),
@@ -213,10 +361,16 @@ def _cached(page) -> bool:
     return bool(getattr(page, "_from_cache", False))
 
 
-@app.get("/v1/scrape", response_model=ScrapeResponse)
-@app.get("/scrape", response_model=ScrapeResponse)
+@app.get(
+    "/v1/scrape",
+    response_model=ScrapeResponse,
+    tags=["Paid SKUs"],
+    summary="Scrape URL to Markdown ($0.01 USDC)",
+    description="Fetches a public page and returns stripped Markdown. Unpaid calls return HTTP 402 with x402 v2 Exact USDC on Base (`eip155:8453`).",
+)
+@app.get("/scrape", response_model=ScrapeResponse, include_in_schema=False)
 async def scrape_get(
-    url: str = Query(..., description="Public http(s) URL to fetch."),
+    url: str = Query(..., description="Public http(s) URL to fetch.", examples=["https://example.com"]),
     pay_for_source: bool = Query(True),
 ) -> ScrapeResponse:
     page = await _page(url, pay_for_source)
@@ -230,8 +384,13 @@ async def scrape_get(
     )
 
 
-@app.post("/v1/scrape", response_model=ScrapeResponse)
-@app.post("/scrape", response_model=ScrapeResponse)
+@app.post(
+    "/v1/scrape",
+    response_model=ScrapeResponse,
+    tags=["Paid SKUs"],
+    summary="Scrape URL to Markdown ($0.01 USDC)",
+)
+@app.post("/scrape", response_model=ScrapeResponse, include_in_schema=False)
 async def scrape_post(body: ScrapeRequest) -> ScrapeResponse:
     page = await _page(str(body.url), body.pay_for_source)
     return ScrapeResponse(
@@ -244,8 +403,16 @@ async def scrape_post(body: ScrapeRequest) -> ScrapeResponse:
     )
 
 
-@app.get("/v1/summary", response_model=SummaryResponse)
-async def summary_get(url: str = Query(..., description="Public http(s) URL to fetch.")) -> SummaryResponse:
+@app.get(
+    "/v1/summary",
+    response_model=SummaryResponse,
+    tags=["Paid SKUs"],
+    summary="Executive summary ($0.02 USDC)",
+    description="Returns three bullets plus Markdown. x402 v2 Exact USDC on Base.",
+)
+async def summary_get(
+    url: str = Query(..., description="Public http(s) URL to fetch.", examples=["https://example.com"]),
+) -> SummaryResponse:
     page = await _page(url)
     return SummaryResponse(
         url=page.url,
@@ -257,7 +424,7 @@ async def summary_get(url: str = Query(..., description="Public http(s) URL to f
     )
 
 
-@app.post("/v1/summary", response_model=SummaryResponse)
+@app.post("/v1/summary", response_model=SummaryResponse, tags=["Paid SKUs"], summary="Executive summary ($0.02 USDC)")
 async def summary_post(body: ScrapeRequest) -> SummaryResponse:
     page = await _page(str(body.url), body.pay_for_source)
     return SummaryResponse(
@@ -270,9 +437,14 @@ async def summary_post(body: ScrapeRequest) -> SummaryResponse:
     )
 
 
-@app.get("/v1/extract-metadata", response_model=MetadataResponse)
+@app.get(
+    "/v1/extract-metadata",
+    response_model=MetadataResponse,
+    tags=["Paid SKUs"],
+    summary="Extract page metadata ($0.01 USDC)",
+)
 async def metadata_get(
-    url: str = Query(..., description="Public http(s) URL to fetch."),
+    url: str = Query(..., description="Public http(s) URL to fetch.", examples=["https://example.com"]),
 ) -> MetadataResponse:
     page = await _page(url)
     return MetadataResponse(
@@ -290,7 +462,7 @@ async def metadata_get(
     )
 
 
-@app.post("/v1/extract-metadata", response_model=MetadataResponse)
+@app.post("/v1/extract-metadata", response_model=MetadataResponse, tags=["Paid SKUs"], summary="Extract page metadata ($0.01 USDC)")
 async def metadata_post(body: ScrapeRequest) -> MetadataResponse:
     page = await _page(str(body.url), body.pay_for_source)
     return MetadataResponse(
@@ -335,12 +507,19 @@ async def _parse_pdf(url: str) -> PdfParseResponse:
     return payload
 
 
-@app.get("/v1/parse-pdf", response_model=PdfParseResponse)
-async def parse_pdf_get(url: str = Query(..., description="Public http(s) PDF URL.")) -> PdfParseResponse:
+@app.get(
+    "/v1/parse-pdf",
+    response_model=PdfParseResponse,
+    tags=["Paid SKUs"],
+    summary="Parse PDF to Markdown ($0.05 USDC)",
+)
+async def parse_pdf_get(
+    url: str = Query(..., description="Public http(s) PDF URL.", examples=["https://example.com/paper.pdf"]),
+) -> PdfParseResponse:
     return await _parse_pdf(url)
 
 
-@app.post("/v1/parse-pdf", response_model=PdfParseResponse)
+@app.post("/v1/parse-pdf", response_model=PdfParseResponse, tags=["Paid SKUs"], summary="Parse PDF to Markdown ($0.05 USDC)")
 async def parse_pdf_post(body: ScrapeRequest) -> PdfParseResponse:
     return await _parse_pdf(str(body.url))
 
@@ -366,15 +545,21 @@ async def _crawl(url: str, max_depth: int) -> CrawlResponse:
     return payload
 
 
-@app.get("/v1/deep-crawl", response_model=CrawlResponse)
+@app.get(
+    "/v1/deep-crawl",
+    response_model=CrawlResponse,
+    tags=["Paid SKUs"],
+    summary="Deep site crawl ($0.15 USDC)",
+    description="Same-host BFS, max_depth 1-3. x402 v2 Exact USDC on Base.",
+)
 async def crawl_get(
-    url: str = Query(..., description="Public http(s) starting URL."),
-    max_depth: int = Query(2, ge=1, le=3),
+    url: str = Query(..., description="Public http(s) starting URL.", examples=["https://example.com"]),
+    max_depth: int = Query(2, ge=1, le=3, description="Internal link depth, 1-3."),
 ) -> CrawlResponse:
     return await _crawl(url, max_depth)
 
 
-@app.post("/v1/deep-crawl", response_model=CrawlResponse)
+@app.post("/v1/deep-crawl", response_model=CrawlResponse, tags=["Paid SKUs"], summary="Deep site crawl ($0.15 USDC)")
 async def crawl_post(body: CrawlRequest) -> CrawlResponse:
     return await _crawl(str(body.url), body.max_depth)
 
