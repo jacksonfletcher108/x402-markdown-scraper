@@ -481,6 +481,30 @@ class McpEndpointTests(unittest.TestCase):
         settle.assert_not_awaited()
 
 
+class ClientKeyValidationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent / "client" / "src"))
+        from x402_scraper import ScraperClient
+
+        cls.ScraperClient = ScraperClient
+
+    def test_address_instead_of_key_is_explained(self) -> None:
+        with self.assertRaisesRegex(ValueError, "looks like a wallet address"):
+            self.ScraperClient(private_key=TEST_WALLET)
+
+    def test_bad_key_message_never_echoes_input(self) -> None:
+        secret = "word " * 12
+        with self.assertRaises(ValueError) as ctx:
+            self.ScraperClient(private_key=secret)
+        self.assertNotIn("word", str(ctx.exception))
+        self.assertIn("64 hex characters", str(ctx.exception))
+
+    def test_valid_key_and_no_key_accepted(self) -> None:
+        self.ScraperClient(private_key="0x" + "11" * 32)
+        self.ScraperClient(private_key="")
+
+
 def _public_dns(host, *args, **kwargs):
     return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("1.1.1.1", 0))]
 
