@@ -47,7 +47,7 @@ class Product:
     method: str
     path: str
     tags: tuple[str, ...]
-    query_example: dict[str, str]
+    query_example: dict[str, object]
     query_schema: dict
     output_example: dict
     output_schema: dict = field(default_factory=dict)
@@ -165,6 +165,87 @@ PRODUCTS: tuple[Product, ...] = (
                 "reading_time_minutes",
                 "source_status",
             ],
+        },
+        category="Data",
+    ),
+    Product(
+        sku="doc.pdf",
+        name="PDF to markdown",
+        description="Fetch a PDF URL and return stripped, structured Markdown of the document text.",
+        price="$0.05",
+        method="GET",
+        path="/v1/parse-pdf",
+        tags=("Data", "pdf", "markdown", "scrape", "agents"),
+        query_example={"url": "https://example.com/paper.pdf"},
+        query_schema=URL_INPUT_SCHEMA,
+        output_example={
+            "sku": "doc.pdf",
+            "url": "https://example.com/paper.pdf",
+            "page_count": 2,
+            "markdown": "# PDF extract\n\n## Page 1\n\nHello",
+            "cached": False,
+            "source_status": 200,
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "sku": {"type": "string", "const": "doc.pdf"},
+                "url": {"type": "string", "format": "uri"},
+                "page_count": {"type": "integer"},
+                "markdown": {"type": "string"},
+                "cached": {"type": "boolean"},
+                "source_status": {"type": "integer"},
+            },
+            "required": ["sku", "url", "markdown", "source_status"],
+        },
+        category="Data",
+    ),
+    Product(
+        sku="site.crawl",
+        name="Deep site crawl",
+        description="Crawl a starting URL up to 3 internal levels and return a structured multi-page document map.",
+        price="$0.15",
+        method="GET",
+        path="/v1/deep-crawl",
+        tags=("Data", "crawl", "sitemap", "scrape", "agents"),
+        query_example={"url": "https://example.com", "max_depth": 2},
+        query_schema={
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Public http(s) starting URL.",
+                },
+                "max_depth": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 3,
+                    "description": "Internal link depth, 1-3.",
+                },
+            },
+            "required": ["url"],
+            "additionalProperties": False,
+        },
+        output_example={
+            "sku": "site.crawl",
+            "root": "https://example.com/",
+            "max_depth": 2,
+            "page_count": 1,
+            "pages": [{"url": "https://example.com/", "title": "Example", "depth": 0}],
+            "cached": False,
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "sku": {"type": "string", "const": "site.crawl"},
+                "root": {"type": "string"},
+                "max_depth": {"type": "integer"},
+                "page_count": {"type": "integer"},
+                "pages": {"type": "array"},
+                "cached": {"type": "boolean"},
+            },
+            "required": ["sku", "root", "pages"],
         },
         category="Data",
     ),
@@ -294,7 +375,12 @@ def bazaar_extension(product: Product, *, body_type: str | None = None) -> dict:
     )
 
 
-def public_catalog(pay_to: str, networks: list[str], settlement_ready: bool) -> dict:
+def public_catalog(
+    pay_to: str,
+    networks: list[str],
+    settlement_ready: bool,
+    pay_to_solana: str | None = None,
+) -> dict:
     return {
         "vendor": "x402 Markdown Scraper",
         "protocol": "x402",
@@ -302,6 +388,7 @@ def public_catalog(pay_to: str, networks: list[str], settlement_ready: bool) -> 
         "category": "Data",
         "settlement_ready": settlement_ready,
         "pay_to": pay_to,
+        "pay_to_solana": pay_to_solana or None,
         "networks": networks,
         "asset": "USDC",
         "discovery": {

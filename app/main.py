@@ -15,13 +15,18 @@ from x402.http.middleware.fastapi import PaymentMiddlewareASGI
 from x402.http.paywall import create_paywall, evm_paywall
 from x402.http.types import PaywallConfig
 
+from app.cache import cache
 from app.catalog import PRODUCTS, public_catalog
 from app.config import get_settings
+from app.crawl import deep_crawl
 from app.discovery import ai_plugin_manifest, llms_txt, mcp_manifest, x402_openapi_extension
 from app.models import (
+    CrawlRequest,
+    CrawlResponse,
     LinksResponse,
     MetadataResponse,
     OutlineResponse,
+    PdfParseResponse,
     ScrapeRequest,
     ScrapeResponse,
     SummaryResponse,
@@ -29,7 +34,8 @@ from app.models import (
     TitleResponse,
 )
 from app.payments import paid_routes, paywall_is_testnet, resource_server, settlement_ready
-from app.scraper import ScrapeError, fetch_page
+from app.pdf import pdf_bytes_to_markdown
+from app.scraper import ScrapeError, fetch_bytes, fetch_page
 from app.summarize import executive_summary
 from app.x402_log import X402TraceMiddleware, attach_payment_logs
 
@@ -37,6 +43,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("x402.shop")
 
 settings = get_settings()
+cache.ttl_seconds = settings.cache_ttl_seconds
 log.info(
     "x402 shop starting pay_to=%s networks=%s facilitator=%s",
     settings.pay_to(),
@@ -48,9 +55,10 @@ app = FastAPI(
     title="x402 Markdown Scraper",
     description=(
         "Converts any web article URL into clean, stripped Markdown for AI context windows. "
-        "GET /v1/scrape $0.01, GET /v1/summary $0.02, GET /v1/extract-metadata $0.01 USDC on Base via x402."
+        "GET /v1/scrape $0.01, /v1/summary $0.02, /v1/extract-metadata $0.01, "
+        "/v1/parse-pdf $0.05, /v1/deep-crawl $0.15 USDC via x402 on Base and optional Solana."
     ),
-    version="0.4.0",
+    version="0.5.0",
 )
 
 server = attach_payment_logs(resource_server(settings))
@@ -173,12 +181,22 @@ async def well_known_ai_plugin() -> dict:
 
 @app.get("/v1/catalog")
 async def catalog() -> dict:
-    return public_catalog(settings.pay_to(), settings.networks(), settlement_ready(settings))
+    return public_catalog(
+        settings.pay_to(),
+        settings.networks(),
+        settlement_ready(settings),
+        pay_to_solana=settings.solana_pay_to() or None,
+    )
 
 
 async def _page(url: str, pay_for_source: bool = True):
+    key = f"page:{url}"
+    hit = cache.get(key)
+    if hit is not None:
+        hit._from_cache = True
+        return hit
     try:
-        return await fetch_page(url, settings, pay_for_source=pay_for_source)
+        page = await fetch_page(url, settings, pay_for_source=pay_for_source)
     except ScrapeError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except HTTPException:
@@ -186,6 +204,13 @@ async def _page(url: str, pay_for_source: bool = True):
     except Exception as exc:
         log.exception("unexpected fetch failure")
         raise HTTPException(status_code=502, detail="Failed to fetch or parse the page") from exc
+    page._from_cache = False
+    cache.set(key, page)
+    return page
+
+
+def _cached(page) -> bool:
+    return bool(getattr(page, "_from_cache", False))
 
 
 @app.get("/v1/scrape", response_model=ScrapeResponse)
@@ -201,6 +226,7 @@ async def scrape_get(
         markdown=page.markdown,
         source_status=page.source_status,
         paid_source=page.paid_source,
+        cached=_cached(page),
     )
 
 
@@ -214,6 +240,7 @@ async def scrape_post(body: ScrapeRequest) -> ScrapeResponse:
         markdown=page.markdown,
         source_status=page.source_status,
         paid_source=page.paid_source,
+        cached=_cached(page),
     )
 
 
@@ -226,6 +253,7 @@ async def summary_get(url: str = Query(..., description="Public http(s) URL to f
         summary=executive_summary(page.text, page.title, page.headings),
         markdown=page.markdown,
         source_status=page.source_status,
+        cached=_cached(page),
     )
 
 
@@ -238,6 +266,7 @@ async def summary_post(body: ScrapeRequest) -> SummaryResponse:
         summary=executive_summary(page.text, page.title, page.headings),
         markdown=page.markdown,
         source_status=page.source_status,
+        cached=_cached(page),
     )
 
 
@@ -257,6 +286,7 @@ async def metadata_get(
         word_count=page.word_count,
         reading_time_minutes=page.reading_time_minutes,
         source_status=page.source_status,
+        cached=_cached(page),
     )
 
 
@@ -274,7 +304,69 @@ async def metadata_post(body: ScrapeRequest) -> MetadataResponse:
         word_count=page.word_count,
         reading_time_minutes=page.reading_time_minutes,
         source_status=page.source_status,
+        cached=_cached(page),
     )
+
+
+async def _parse_pdf(url: str) -> PdfParseResponse:
+    key = f"pdf:{url}"
+    hit = cache.get(key)
+    if hit is not None:
+        hit.cached = True
+        return hit
+    try:
+        data, final_url, status = await fetch_bytes(url, settings, max_bytes=settings.max_pdf_bytes)
+        markdown, page_count = pdf_bytes_to_markdown(data, final_url)
+    except ScrapeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    payload = PdfParseResponse(
+        url=final_url,
+        page_count=page_count,
+        markdown=markdown,
+        cached=False,
+        source_status=status,
+    )
+    cache.set(key, payload)
+    return payload
+
+
+@app.get("/v1/parse-pdf", response_model=PdfParseResponse)
+async def parse_pdf_get(url: str = Query(..., description="Public http(s) PDF URL.")) -> PdfParseResponse:
+    return await _parse_pdf(url)
+
+
+@app.post("/v1/parse-pdf", response_model=PdfParseResponse)
+async def parse_pdf_post(body: ScrapeRequest) -> PdfParseResponse:
+    return await _parse_pdf(str(body.url))
+
+
+async def _crawl(url: str, max_depth: int) -> CrawlResponse:
+    depth = max(1, min(max_depth, 3))
+    key = f"crawl:{url}:{depth}"
+    hit = cache.get(key)
+    if hit is not None:
+        hit.cached = True
+        return hit
+    try:
+        raw = await deep_crawl(url, depth, settings)
+    except ScrapeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    payload = CrawlResponse(cached=False, **raw)
+    cache.set(key, payload)
+    return payload
+
+
+@app.get("/v1/deep-crawl", response_model=CrawlResponse)
+async def crawl_get(
+    url: str = Query(..., description="Public http(s) starting URL."),
+    max_depth: int = Query(2, ge=1, le=3),
+) -> CrawlResponse:
+    return await _crawl(url, max_depth)
+
+
+@app.post("/v1/deep-crawl", response_model=CrawlResponse)
+async def crawl_post(body: CrawlRequest) -> CrawlResponse:
+    return await _crawl(str(body.url), body.max_depth)
 
 
 @app.get("/v1/title", response_model=TitleResponse)
@@ -311,6 +403,8 @@ _PAID_OPENAPI_PATHS = {
     "/scrape": "$0.01",
     "/v1/summary": "$0.02",
     "/v1/extract-metadata": "$0.01",
+    "/v1/parse-pdf": "$0.05",
+    "/v1/deep-crawl": "$0.15",
     "/v1/title": "$0.001",
     "/v1/text": "$0.005",
     "/v1/outline": "$0.005",

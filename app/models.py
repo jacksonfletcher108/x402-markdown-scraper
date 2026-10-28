@@ -16,6 +16,7 @@ class ScrapeResponse(BaseModel):
     markdown: str
     source_status: int
     paid_source: bool
+    cached: bool = False
 
 
 class TitleResponse(BaseModel):
@@ -54,6 +55,41 @@ class SummaryResponse(BaseModel):
     summary: list[str] = Field(min_length=3, max_length=3)
     markdown: str
     source_status: int
+    cached: bool = False
+
+
+class PdfParseResponse(BaseModel):
+    sku: str = "doc.pdf"
+    url: str
+    page_count: int
+    markdown: str
+    cached: bool = False
+    source_status: int
+
+
+class CrawlRequest(BaseModel):
+    url: HttpUrl = Field(description="Public http(s) starting URL.")
+    max_depth: int = Field(default=2, ge=1, le=3)
+    pay_for_source: bool = True
+
+
+class CrawlPage(BaseModel):
+    url: str
+    title: str | None = None
+    depth: int
+    headings: list[str] = Field(default_factory=list)
+    markdown: str = ""
+    links: list[str] = Field(default_factory=list)
+
+
+class CrawlResponse(BaseModel):
+    sku: str = "site.crawl"
+    root: str
+    max_depth: int
+    page_count: int
+    pages: list[CrawlPage]
+    errors: list[dict] = Field(default_factory=list)
+    cached: bool = False
 
 
 class MetadataResponse(BaseModel):
@@ -68,3 +104,4 @@ class MetadataResponse(BaseModel):
     word_count: int
     reading_time_minutes: int
     source_status: int
+    cached: bool = False

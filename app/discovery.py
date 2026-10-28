@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.catalog import PRODUCTS, SCRAPE_DESCRIPTION, URL_INPUT_SCHEMA
+from app.catalog import PRODUCTS, SCRAPE_DESCRIPTION
 from app.config import Settings
 
 PUBLIC_HOST = "https://x402-markdown-scraper.onrender.com"
@@ -46,6 +46,8 @@ def llms_txt(settings: Settings) -> str:
             f"GET/POST {PUBLIC_HOST}/v1/scrape costs $0.01 USDC. Query or JSON body: {{\"url\": \"...\"}}.",
             f"GET/POST {PUBLIC_HOST}/v1/summary costs $0.02 USDC. Returns 3-bullet summary + markdown.",
             f"GET/POST {PUBLIC_HOST}/v1/extract-metadata costs $0.01 USDC. Returns Open Graph, JSON-LD, author, date, word count.",
+            f"GET/POST {PUBLIC_HOST}/v1/parse-pdf costs $0.05 USDC. PDF URL to structured Markdown.",
+            f"GET/POST {PUBLIC_HOST}/v1/deep-crawl costs $0.15 USDC. Internal crawl, max_depth 1-3.",
             "",
             "## Optional SKUs",
             "",
@@ -57,12 +59,16 @@ def llms_txt(settings: Settings) -> str:
 
 
 def mcp_manifest(settings: Settings) -> dict:
-    featured = [product for product in PRODUCTS if product.sku in {"scrape.md", "page.summary", "page.metadata"}]
+    featured = [
+        product
+        for product in PRODUCTS
+        if product.sku in {"scrape.md", "page.summary", "page.metadata", "doc.pdf", "site.crawl"}
+    ]
     scrape = featured[0]
     return {
         "name": "x402-markdown-scraper",
         "description": SCRAPE_DESCRIPTION,
-        "version": "0.4.0",
+        "version": "0.5.0",
         "protocol": "x402",
         "x402Version": 2,
         "category": "Data",
@@ -83,7 +89,7 @@ def mcp_manifest(settings: Settings) -> dict:
                 "path": product.path,
                 "url": f"{PUBLIC_HOST}{product.path}",
                 "price": product.price,
-                "inputSchema": URL_INPUT_SCHEMA,
+                "inputSchema": product.query_schema,
                 "outputSchema": product.output_schema,
                 "outputMimeType": "application/json",
             }
@@ -100,8 +106,8 @@ def ai_plugin_manifest(settings: Settings) -> dict:
         "name_for_model": "x402_markdown_scraper",
         "description_for_human": SCRAPE_DESCRIPTION,
         "description_for_model": (
-            f"{SCRAPE_DESCRIPTION} Also: GET /v1/summary ($0.02) and GET /v1/extract-metadata ($0.01). "
-            f"Unpaid requests return HTTP 402. Pay USDC on Base (eip155:8453) via x402."
+            f"{SCRAPE_DESCRIPTION} Also /v1/summary $0.02, /v1/extract-metadata $0.01, "
+            "/v1/parse-pdf $0.05, /v1/deep-crawl $0.15. Pay USDC on Base and optional Solana via x402."
         ),
         "auth": {"type": "none"},
         "api": {
@@ -119,6 +125,8 @@ def ai_plugin_manifest(settings: Settings) -> dict:
                 {"path": "GET /v1/scrape", "price": "$0.01"},
                 {"path": "GET /v1/summary", "price": "$0.02"},
                 {"path": "GET /v1/extract-metadata", "price": "$0.01"},
+                {"path": "GET /v1/parse-pdf", "price": "$0.05"},
+                {"path": "GET /v1/deep-crawl", "price": "$0.15"},
             ],
             "input": {"url": "string, required, public article URL"},
         },
@@ -135,10 +143,13 @@ def x402_openapi_extension(settings: Settings) -> dict:
         "category": "Data",
         "primaryPrice": "$0.01",
         "primaryPath": "GET /v1/scrape",
+        "payToSolana": settings.solana_pay_to() or None,
         "featured": [
             {"path": "GET /v1/scrape", "price": "$0.01"},
             {"path": "GET /v1/summary", "price": "$0.02"},
             {"path": "GET /v1/extract-metadata", "price": "$0.01"},
+            {"path": "GET /v1/parse-pdf", "price": "$0.05"},
+            {"path": "GET /v1/deep-crawl", "price": "$0.15"},
         ],
         "note": "Unpaid calls to paid paths return HTTP 402 with a PAYMENT-REQUIRED header.",
     }

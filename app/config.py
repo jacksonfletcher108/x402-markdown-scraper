@@ -11,6 +11,7 @@ PLACEHOLDER_PAY_TO = {
 
 MAINNET: Network = "eip155:8453"
 SEPOLIA: Network = "eip155:84532"
+SOLANA: Network = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
 MAINNET_FACILITATOR = "https://facilitator.payai.network"
 SEPOLIA_FACILITATOR = "https://x402.org/facilitator"
 CDP_FACILITATOR = "https://api.cdp.coinbase.com/platform/v2/x402"
@@ -30,12 +31,21 @@ def is_usable_pay_to(address: str) -> bool:
         return False
 
 
+def is_usable_solana(address: str) -> bool:
+    value = address.strip()
+    if len(value) < 32 or len(value) > 44:
+        return False
+    alphabet = set("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
+    return all(char in alphabet for char in value)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Preferred Render name. X402_PAY_TO remains a fallback for existing deploys.
     payment_wallet_address: str = ""
     x402_pay_to: str = ""
+    solana_wallet_address: str = ""
     # Comma-separated CAIP-2 ids. Mainnet first so Coinbase Wallet USDC matches.
     x402_networks: str = f"{MAINNET},{SEPOLIA}"
     x402_price: str = "$0.01"
@@ -48,13 +58,19 @@ class Settings(BaseSettings):
     port: int = 4021
     request_timeout_seconds: float = 20.0
     max_html_bytes: int = 2_000_000
+    max_pdf_bytes: int = 8_000_000
+    cache_ttl_seconds: float = 900.0
 
     def networks(self) -> list[Network]:
         requested = [item.strip() for item in self.x402_networks.split(",") if item.strip()]
         if not is_usable_pay_to(self.pay_to()):
             # Do not accept real USDC until a real receiving wallet is configured.
-            return [SEPOLIA]
-        return requested or [MAINNET]
+            networks = [SEPOLIA]
+        else:
+            networks = requested or [MAINNET]
+        if self.solana_enabled() and SOLANA not in networks:
+            networks.append(SOLANA)
+        return networks
 
     def pay_to(self) -> str:
         for candidate in (self.payment_wallet_address, self.x402_pay_to):
@@ -62,6 +78,17 @@ class Settings(BaseSettings):
             if value:
                 return value
         return "0x0000000000000000000000000000000000000000"
+
+    def solana_pay_to(self) -> str:
+        return self.solana_wallet_address.strip()
+
+    def solana_enabled(self) -> bool:
+        return is_usable_solana(self.solana_pay_to())
+
+    def pay_to_for(self, network: Network) -> str:
+        if str(network).startswith("solana:"):
+            return self.solana_pay_to()
+        return self.pay_to()
 
     def uses_cdp(self) -> bool:
         return bool(self.cdp_api_key_id and self.cdp_api_key_secret)

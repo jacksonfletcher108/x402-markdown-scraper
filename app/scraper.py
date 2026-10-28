@@ -97,6 +97,21 @@ async def _fetch_with_optional_payment(
         return response, False
 
 
+async def fetch_bytes(url: str, settings: Settings, *, max_bytes: int | None = None) -> tuple[bytes, str, int]:
+    url = validate_url(url)
+    try:
+        response, _paid = await _fetch_with_optional_payment(url, settings, pay_for_source=False)
+    except httpx.TimeoutException as exc:
+        raise ScrapeError("Timed out fetching URL", status_code=504) from exc
+    except httpx.RequestError as exc:
+        raise ScrapeError(f"Could not fetch URL: {exc.__class__.__name__}", status_code=502) from exc
+    if response.status_code >= 400:
+        raise ScrapeError(f"Source returned HTTP {response.status_code}", status_code=502)
+    validate_url(str(response.url))
+    limit = max_bytes or settings.max_html_bytes
+    return response.content[:limit], str(response.url), response.status_code
+
+
 async def fetch_page(
     url: str,
     settings: Settings,

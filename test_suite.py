@@ -15,11 +15,13 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from app.catalog import PRODUCTS
-from app.config import MAINNET, Settings
+from app.cache import TtlCache, cache
+from app.config import MAINNET, SOLANA, Settings
 from app.extract import PageExtract, parse_html
 from app.main import (
     app,
     metadata_get,
+    parse_pdf_get,
     scrape_get,
     summary_get,
 )
@@ -80,6 +82,10 @@ class PaywallBindingTests(unittest.TestCase):
             "POST /v1/summary": "$0.02",
             "GET /v1/extract-metadata": "$0.01",
             "POST /v1/extract-metadata": "$0.01",
+            "GET /v1/parse-pdf": "$0.05",
+            "POST /v1/parse-pdf": "$0.05",
+            "GET /v1/deep-crawl": "$0.15",
+            "POST /v1/deep-crawl": "$0.15",
         }
         for key, price in expected.items():
             self.assertIn(key, self.routes, key)
@@ -99,6 +105,23 @@ class PaywallBindingTests(unittest.TestCase):
         self.assertEqual(paths["/v1/scrape"], "$0.01")
         self.assertEqual(paths["/v1/summary"], "$0.02")
         self.assertEqual(paths["/v1/extract-metadata"], "$0.01")
+        self.assertEqual(paths["/v1/parse-pdf"], "$0.05")
+        self.assertEqual(paths["/v1/deep-crawl"], "$0.15")
+
+    def test_solana_option_when_wallet_set(self) -> None:
+        sol = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        routes = paid_routes(
+            Settings(
+                payment_wallet_address=TEST_WALLET,
+                x402_pay_to="",
+                solana_wallet_address=sol,
+            )
+        )
+        accepts = routes["GET /v1/scrape"].accepts
+        networks = [str(item.network) for item in accepts]
+        self.assertIn(SOLANA, networks)
+        svm = next(item for item in accepts if str(item.network) == SOLANA)
+        self.assertEqual(svm.pay_to, sol)
 
 
 class DiscoveryRouteTests(unittest.TestCase):
@@ -119,6 +142,8 @@ class DiscoveryRouteTests(unittest.TestCase):
         self.assertEqual(paths["/v1/scrape"], "$0.01")
         self.assertEqual(paths["/v1/summary"], "$0.02")
         self.assertEqual(paths["/v1/extract-metadata"], "$0.01")
+        self.assertEqual(paths["/v1/parse-pdf"], "$0.05")
+        self.assertEqual(paths["/v1/deep-crawl"], "$0.15")
 
     def test_llms_txt(self) -> None:
         response = self.client.get("/llms.txt")
@@ -126,6 +151,8 @@ class DiscoveryRouteTests(unittest.TestCase):
         self.assertIn("/v1/scrape", response.text)
         self.assertIn("/v1/summary", response.text)
         self.assertIn("/v1/extract-metadata", response.text)
+        self.assertIn("/v1/parse-pdf", response.text)
+        self.assertIn("/v1/deep-crawl", response.text)
 
     def test_openapi(self) -> None:
         response = self.client.get("/openapi.json")
@@ -134,13 +161,24 @@ class DiscoveryRouteTests(unittest.TestCase):
         self.assertIn("/v1/scrape", paths)
         self.assertIn("/v1/summary", paths)
         self.assertIn("/v1/extract-metadata", paths)
+        self.assertIn("/v1/parse-pdf", paths)
+        self.assertIn("/v1/deep-crawl", paths)
         self.assertEqual(response.json()["info"]["x-x402"]["asset"], "USDC")
 
     def test_well_known_mcp(self) -> None:
         response = self.client.get("/.well-known/mcp")
         self.assertEqual(response.status_code, 200)
         tools = {item["path"] for item in response.json()["tools"]}
-        self.assertEqual(tools, {"/v1/scrape", "/v1/summary", "/v1/extract-metadata"})
+        self.assertEqual(
+            tools,
+            {
+                "/v1/scrape",
+                "/v1/summary",
+                "/v1/extract-metadata",
+                "/v1/parse-pdf",
+                "/v1/deep-crawl",
+            },
+        )
 
 
 class PaidFourOhTwoTests(unittest.TestCase):
@@ -175,6 +213,12 @@ class PaidFourOhTwoTests(unittest.TestCase):
     def test_metadata_402_one_cent(self) -> None:
         self.assertEqual(self._amount_on_base(self._challenge("/v1/extract-metadata")), "10000")
 
+    def test_pdf_402_five_cents(self) -> None:
+        self.assertEqual(self._amount_on_base(self._challenge("/v1/parse-pdf")), "50000")
+
+    def test_crawl_402_fifteen_cents(self) -> None:
+        self.assertEqual(self._amount_on_base(self._challenge("/v1/deep-crawl")), "150000")
+
 
 class FulfillmentMockTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
@@ -205,6 +249,35 @@ class FulfillmentMockTests(unittest.IsolatedAsyncioTestCase):
     def test_extractive_summary_length(self) -> None:
         bullets = executive_summary(self.page.text, self.page.title, self.page.headings)
         self.assertEqual(len(bullets), 3)
+
+    async def test_pdf_handler(self) -> None:
+        from io import BytesIO
+
+        from pypdf import PdfWriter
+
+        buf = BytesIO()
+        writer = PdfWriter()
+        writer.add_blank_page(width=72, height=72)
+        writer.write(buf)
+        with patch("app.main.fetch_bytes", AsyncMock(return_value=(buf.getvalue(), "https://ex.com/a.pdf", 200))):
+            result = await parse_pdf_get(url="https://ex.com/a.pdf")
+        self.assertEqual(result.sku, "doc.pdf")
+        self.assertTrue(result.markdown)
+
+    def test_ttl_cache(self) -> None:
+        local = TtlCache(ttl_seconds=60)
+        local.set("k", {"ok": True})
+        self.assertEqual(local.get("k"), {"ok": True})
+
+    async def test_scrape_cache_skips_second_fetch(self) -> None:
+        cache._items.clear()
+        mock = AsyncMock(return_value=self.page)
+        with patch("app.main.fetch_page", mock):
+            first = await scrape_get(url="https://cache-test.example/article")
+            second = await scrape_get(url="https://cache-test.example/article")
+        self.assertEqual(mock.await_count, 1)
+        self.assertFalse(first.cached)
+        self.assertTrue(second.cached)
 
 
 def main() -> int:

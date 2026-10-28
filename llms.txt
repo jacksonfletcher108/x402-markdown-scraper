@@ -22,6 +22,8 @@ Retry the same URL with PAYMENT-SIGNATURE to settle Exact EVM USDC.
 - [Markdown scrape](https://x402-markdown-scraper.onrender.com/v1/scrape?url=https://example.com): GET /v1/scrape?url= — $0.01 USDC. Converts any web article URL into clean, stripped Markdown for AI context windows.
 - [Executive summary](https://x402-markdown-scraper.onrender.com/v1/summary?url=https://example.com): GET/POST /v1/summary — $0.02 USDC. Scrape a URL and return a 3-bullet executive summary plus clean Markdown.
 - [Page metadata](https://x402-markdown-scraper.onrender.com/v1/extract-metadata?url=https://example.com): GET/POST /v1/extract-metadata — $0.01 USDC. Extract Open Graph, Schema.org JSON-LD, author, publish date, word count, and reading time.
+- [PDF to markdown](https://x402-markdown-scraper.onrender.com/v1/parse-pdf?url=https://example.com/paper.pdf): GET/POST /v1/parse-pdf — $0.05 USDC. Fetch a PDF URL and return stripped structured Markdown.
+- [Deep site crawl](https://x402-markdown-scraper.onrender.com/v1/deep-crawl?url=https://example.com): GET/POST /v1/deep-crawl — $0.15 USDC. Crawl internal links up to 3 levels into a document map.
 - [Title + description](https://x402-markdown-scraper.onrender.com/v1/title?url=https://example.com): GET /v1/title?url= — $0.001 USDC. Return the page title and meta description only.
 - [Plain text](https://x402-markdown-scraper.onrender.com/v1/text?url=https://example.com): GET /v1/text?url= — $0.005 USDC. Return visible page text without HTML.
 - [Heading outline](https://x402-markdown-scraper.onrender.com/v1/outline?url=https://example.com): GET /v1/outline?url= — $0.005 USDC. Return h1–h3 headings as a document outline.
@@ -32,3 +34,5 @@ Retry the same URL with PAYMENT-SIGNATURE to settle Exact EVM USDC.
 GET/POST https://x402-markdown-scraper.onrender.com/v1/scrape costs $0.01 USDC. Query or JSON `{"url":"..."}`.
 GET/POST https://x402-markdown-scraper.onrender.com/v1/summary costs $0.02 USDC.
 GET/POST https://x402-markdown-scraper.onrender.com/v1/extract-metadata costs $0.01 USDC.
+GET/POST https://x402-markdown-scraper.onrender.com/v1/parse-pdf costs $0.05 USDC.
+GET/POST https://x402-markdown-scraper.onrender.com/v1/deep-crawl costs $0.15 USDC (max_depth 1-3).

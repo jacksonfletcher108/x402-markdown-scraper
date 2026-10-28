@@ -16,6 +16,8 @@ PAID_PREFIXES = (
     "/scrape",
     "/v1/summary",
     "/v1/extract-metadata",
+    "/v1/parse-pdf",
+    "/v1/deep-crawl",
     "/v1/title",
     "/v1/text",
     "/v1/outline",

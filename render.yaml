@@ -13,6 +13,8 @@ services:
         sync: false
       - key: X402_PAY_TO
         sync: false
+      - key: SOLANA_WALLET_ADDRESS
+        sync: false
       - key: X402_NETWORKS
         value: eip155:8453,eip155:84532
       - key: FACILITATOR_URL
