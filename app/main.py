@@ -22,6 +22,7 @@ from app.config import get_settings
 from app.crawl import deep_crawl
 from app.discovery import ai_plugin_manifest, llms_txt, mcp_manifest, x402_openapi_extension
 from app.mcp_server import McpServer
+from app.playground import PLAYGROUND_CSS, playground_html
 from app.models import (
     CrawlRequest,
     CrawlResponse,
@@ -245,6 +246,7 @@ def _storefront_html() -> str:
     pre {{ background:#0f172a; color:#e2e8f0; padding:1rem; border-radius:12px; overflow:auto; font-size:.82rem; display:none; }}
     pre.active {{ display:block; }}
     .copy {{ margin-left:.5rem; }}
+{PLAYGROUND_CSS}
   </style>
 </head>
 <body>
@@ -262,6 +264,7 @@ def _storefront_html() -> str:
   <main>
     {warning}
     <nav class="nav" aria-label="Discovery">
+      <a href="#playground">Playground</a>
       <a href="/docs">Swagger /docs</a>
       <a href="/llms.txt">llms.txt</a>
       <a href="/openapi.json">openapi.json</a>
@@ -269,6 +272,7 @@ def _storefront_html() -> str:
     </nav>
     <h2>Featured SKUs</h2>
     <div class="grid">{"".join(cards)}</div>
+    {playground_html(PRODUCTS)}
     <h2>Pay a 402 from a client</h2>
     <p class="muted">Probe unpaid, read <code>PAYMENT-REQUIRED</code>, settle Exact USDC on <code>eip155:8453</code>, retry with <code>PAYMENT-SIGNATURE</code>.</p>
     <div class="tabs">

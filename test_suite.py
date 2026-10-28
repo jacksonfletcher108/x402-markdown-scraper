@@ -168,6 +168,21 @@ class DiscoveryRouteTests(unittest.TestCase):
         self.assertIn(Settings().pay_to(), text)
         self.assertTrue("EVM / Base USDC Active" in text or "Base Sepolia" in text)
 
+    def test_storefront_playground(self) -> None:
+        text = self.client.get("/").text
+        self.assertIn('id="playground"', text)
+        for path, price in (
+            ("/v1/scrape", "$0.01"),
+            ("/v1/summary", "$0.02"),
+            ("/v1/extract-metadata", "$0.01"),
+            ("/v1/parse-pdf", "$0.05"),
+            ("/v1/deep-crawl", "$0.15"),
+        ):
+            self.assertIn(f'<option value="{path}"', text)
+            self.assertIn(f'data-price="{price}"', text)
+        for marker in ("PAYMENT-REQUIRED", "PAYMENT-SIGNATURE", "eth_signTypedData_v4", "TransferWithAuthorization"):
+            self.assertIn(marker, text)
+
     def test_swagger_docs_unpaid(self) -> None:
         response = self.client.get("/docs")
         self.assertEqual(response.status_code, 200)
