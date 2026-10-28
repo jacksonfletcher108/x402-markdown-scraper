@@ -319,6 +319,11 @@ async def _parse_pdf(url: str) -> PdfParseResponse:
         markdown, page_count = pdf_bytes_to_markdown(data, final_url)
     except ScrapeError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception("unexpected pdf parse failure")
+        raise HTTPException(status_code=502, detail="Failed to fetch or parse the PDF") from exc
     payload = PdfParseResponse(
         url=final_url,
         page_count=page_count,
@@ -351,6 +356,11 @@ async def _crawl(url: str, max_depth: int) -> CrawlResponse:
         raw = await deep_crawl(url, depth, settings)
     except ScrapeError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception("unexpected crawl failure")
+        raise HTTPException(status_code=502, detail="Failed to crawl the site") from exc
     payload = CrawlResponse(cached=False, **raw)
     cache.set(key, payload)
     return payload

@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = 20.0
     max_html_bytes: int = 2_000_000
     max_pdf_bytes: int = 8_000_000
+    max_download_bytes: int = 10_000_000
+    max_redirects: int = 5
+    crawl_timeout_seconds: float = 15.0
     cache_ttl_seconds: float = 900.0
 
     def networks(self) -> list[Network]:

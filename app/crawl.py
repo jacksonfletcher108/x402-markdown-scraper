@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections import deque
 from urllib.parse import urljoin, urlparse, urlunparse
 
@@ -60,13 +61,26 @@ async def deep_crawl(url: str, max_depth: int, settings: Settings) -> dict:
     visited: set[str] = {root}
     pages: list[dict] = []
     errors: list[dict] = []
+    deadline = time.monotonic() + max(0.1, settings.crawl_timeout_seconds)
 
     while queue and len(pages) < _MAX_PAGES:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            errors.append({"url": root, "error": "crawl wall-clock timeout"})
+            break
         current, level = queue.popleft()
         try:
-            page = await fetch_page(current, settings, pay_for_source=False)
+            page = await fetch_page(
+                current,
+                settings,
+                pay_for_source=False,
+                timeout_seconds=remaining,
+            )
         except ScrapeError as exc:
             errors.append({"url": current, "error": str(exc)})
+            continue
+        except Exception:
+            errors.append({"url": current, "error": "Failed to fetch page"})
             continue
         pages.append(
             {
@@ -88,6 +102,15 @@ async def deep_crawl(url: str, max_depth: int, settings: Settings) -> dict:
             if len(visited) >= _MAX_PAGES * 3:
                 break
 
+    timeout_hit = any(
+        "timed out" in str(item.get("error", "")).lower()
+        or "timeout" in str(item.get("error", "")).lower()
+        for item in errors
+    )
+    if not pages and timeout_hit:
+        raise ScrapeError("Timed out crawling URL", status_code=504)
+    if not pages and errors:
+        raise ScrapeError(str(errors[0]["error"]), status_code=502)
     return {
         "root": root,
         "max_depth": depth,

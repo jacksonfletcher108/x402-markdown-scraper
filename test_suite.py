@@ -8,24 +8,31 @@ from __future__ import annotations
 
 import base64
 import json
+import socket
 import sys
 import unittest
 from unittest.mock import AsyncMock, patch
 
+import httpx
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.catalog import PRODUCTS
 from app.cache import TtlCache, cache
 from app.config import MAINNET, SOLANA, Settings
 from app.extract import PageExtract, parse_html
+from app.crawl import deep_crawl
 from app.main import (
     app,
+    crawl_get,
     metadata_get,
     parse_pdf_get,
     scrape_get,
     summary_get,
 )
 from app.payments import paid_routes
+from app.pdf import pdf_bytes_to_markdown
+from app.scraper import ScrapeError, fetch_bytes, redirect_target, validate_url
 from app.summarize import executive_summary
 
 TEST_WALLET = "0xf84EF3669eA39b87D4a850B4510f7aCBAC19be5f"
@@ -278,6 +285,103 @@ class FulfillmentMockTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mock.await_count, 1)
         self.assertFalse(first.cached)
         self.assertTrue(second.cached)
+
+
+def _public_dns(host, *args, **kwargs):
+    return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("1.1.1.1", 0))]
+
+
+class SecurityBoundaryTests(unittest.IsolatedAsyncioTestCase):
+    def test_blocks_loopback_and_metadata_literals(self) -> None:
+        for target in (
+            "http://127.0.0.1/secret",
+            "http://169.254.169.254/latest/meta-data",
+            "http://localhost/admin",
+            "http://metadata.google.internal/",
+        ):
+            with self.assertRaises(ScrapeError) as ctx:
+                validate_url(target)
+            self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_redirect_to_metadata_is_rejected_before_fetch(self) -> None:
+        with self.assertRaises(ScrapeError) as ctx:
+            redirect_target("https://example.com/go", "http://169.254.169.254/latest/meta-data")
+        self.assertEqual(ctx.exception.status_code, 400)
+        with self.assertRaises(ScrapeError):
+            redirect_target("https://example.com/go", "http://127.0.0.1/secret")
+
+    async def test_http_redirect_to_loopback_never_followed(self) -> None:
+        fetched: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            fetched.append(str(request.url))
+            if request.url.path == "/go":
+                return httpx.Response(302, headers={"Location": "http://127.0.0.1/secret"})
+            return httpx.Response(200, content=b"leaked")
+
+        transport = httpx.MockTransport(handler)
+        real = httpx.AsyncClient
+
+        def factory(*args, **kwargs):
+            kwargs["transport"] = transport
+            return real(*args, **kwargs)
+
+        with (
+            patch("socket.getaddrinfo", side_effect=_public_dns),
+            patch("app.scraper.httpx.AsyncClient", side_effect=factory),
+        ):
+            with self.assertRaises(ScrapeError) as ctx:
+                await fetch_bytes("https://public.test/go", Settings())
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(fetched, ["https://public.test/go"])
+
+    async def test_oversized_body_aborts(self) -> None:
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=b"x" * 200, headers={"content-length": "200"})
+
+        transport = httpx.MockTransport(handler)
+        real = httpx.AsyncClient
+
+        def factory(*args, **kwargs):
+            kwargs["transport"] = transport
+            return real(*args, **kwargs)
+
+        with (
+            patch("socket.getaddrinfo", side_effect=_public_dns),
+            patch("app.scraper.httpx.AsyncClient", side_effect=factory),
+        ):
+            with self.assertRaises(ScrapeError) as ctx:
+                await fetch_bytes("https://public.test/big", Settings(), max_bytes=50)
+        self.assertEqual(ctx.exception.status_code, 413)
+
+    def test_corrupt_pdf_is_422(self) -> None:
+        with self.assertRaises(ScrapeError) as ctx:
+            pdf_bytes_to_markdown(b"not a pdf", "https://ex.com/a.pdf")
+        self.assertEqual(ctx.exception.status_code, 422)
+
+    async def test_pdf_handler_maps_unexpected_errors_to_502(self) -> None:
+        with patch("app.main.fetch_bytes", AsyncMock(side_effect=RuntimeError("boom"))):
+            with self.assertRaises(HTTPException) as ctx:
+                await parse_pdf_get(url="https://ex.com/a.pdf")
+        self.assertEqual(ctx.exception.status_code, 502)
+
+    async def test_crawl_handler_maps_unexpected_errors_to_502(self) -> None:
+        with patch("app.main.deep_crawl", AsyncMock(side_effect=RuntimeError("boom"))):
+            with self.assertRaises(HTTPException) as ctx:
+                await crawl_get(url="https://example.com", max_depth=1)
+        self.assertEqual(ctx.exception.status_code, 502)
+
+    async def test_crawl_timeout_returns_structured_error(self) -> None:
+        with (
+            patch("socket.getaddrinfo", side_effect=_public_dns),
+            patch(
+                "app.crawl.fetch_page",
+                AsyncMock(side_effect=ScrapeError("Timed out fetching URL", status_code=504)),
+            ),
+        ):
+            with self.assertRaises(ScrapeError) as ctx:
+                await deep_crawl("https://public.test/", 2, Settings(crawl_timeout_seconds=15))
+        self.assertEqual(ctx.exception.status_code, 504)
 
 
 def main() -> int:
