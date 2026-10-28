@@ -33,7 +33,13 @@ The x402 SDKs and `x402-scraper` do steps 2–3 for you. Raw header payloads and
 
 ## Quick start
 
-Use a **dedicated wallet** holding a few dollars of USDC on Base, and export its key as `EVM_PRIVATE_KEY`.
+Use a **dedicated wallet** holding a few dollars of USDC on Base, and export its **private key** (64 hex characters, not the 40-character address) as `EVM_PRIVATE_KEY`.
+
+Use **Python 3.11–3.13**. Some wallet dependencies don't ship prebuilt wheels for Python 3.14+ on Windows yet. The quickest way to try it without touching your system Python is [uv](https://docs.astral.sh/uv/) (PowerShell; copy the private key first):
+
+```powershell
+$env:EVM_PRIVATE_KEY = (Get-Clipboard).Trim(); uv run --python 3.12 --with x402-scraper python -c "import asyncio; from x402_scraper import ScraperClient; print(asyncio.run(ScraperClient().scrape('https://example.com'))['markdown'][:200])"; Remove-Item Env:EVM_PRIVATE_KEY
+```
 
 ### Python (`x402-scraper`)
 

@@ -272,7 +272,10 @@ _SCRIPT = """
       message: authorization,
     };
     setStep("sign");
-    status("Awaiting Wallet Signature... (" + (Number(req.amount) / 1e6).toFixed(2) + " USDC)");
+    const minutes = Math.round((req.maxTimeoutSeconds || 300) / 60);
+    status("Awaiting Wallet Signature: you are authorizing exactly " + (Number(req.amount) / 1e6).toFixed(2)
+      + " USDC to " + req.payTo.slice(0, 6) + "…" + req.payTo.slice(-4) + ", valid " + minutes
+      + " min. Your wallet may warn because this signature moves tokens; check that amount and recipient match.");
     const signature = await wallet().request({
       method: "eth_signTypedData_v4",
       params: [account, JSON.stringify(typedData)],

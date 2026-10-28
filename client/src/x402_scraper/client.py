@@ -17,6 +17,24 @@ class ScraperError(RuntimeError):
         self.status_code = status_code
 
 
+def _check_private_key(key: str) -> None:
+    """Fail early with a readable message; never echo the key itself."""
+    body = key[2:] if key.lower().startswith("0x") else key
+    is_hex = all(char in "0123456789abcdefABCDEF" for char in body)
+    if is_hex and len(body) == 64:
+        return
+    if is_hex and len(body) == 40:
+        raise ValueError(
+            "EVM_PRIVATE_KEY looks like a wallet address (40 hex characters), not a private key. "
+            "Export the account's private key (64 hex characters) from your wallet instead."
+        )
+    raise ValueError(
+        f"EVM_PRIVATE_KEY must be 64 hex characters (optionally 0x-prefixed); got {len(body)} characters"
+        + ("" if is_hex else " including non-hex characters")
+        + ". Check you copied the private key, not a recovery phrase or address."
+    )
+
+
 class ScraperClient:
     """Call all five featured SKUs. On HTTP 402, the x402 SDK signs an Exact
     (EIP-3009) USDC payment on Base and retries with PAYMENT-SIGNATURE.
@@ -31,6 +49,8 @@ class ScraperClient:
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.private_key = (private_key or os.environ.get("EVM_PRIVATE_KEY") or "").strip() or None
+        if self.private_key:
+            _check_private_key(self.private_key)
         self.timeout = timeout
         self._http: httpx.AsyncClient | None = None
 
