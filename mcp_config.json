@@ -1,0 +1,135 @@
+{
+  "name": "x402-markdown-scraper",
+  "description": "Penny SKUs that turn URLs and PDFs into Markdown for AI context windows. Pay Exact USDC on Base via x402 v2.",
+  "version": "0.5.0",
+  "protocol": "x402",
+  "x402Version": 2,
+  "homepage": "https://x402-markdown-scraper.onrender.com",
+  "openapi": "https://x402-markdown-scraper.onrender.com/openapi.json",
+  "wellKnownMcp": "https://x402-markdown-scraper.onrender.com/.well-known/mcp",
+  "llmsTxt": "https://x402-markdown-scraper.onrender.com/llms.txt",
+  "auth": {
+    "type": "x402",
+    "scheme": "exact",
+    "asset": "USDC",
+    "network": "eip155:8453",
+    "payTo": "0xf84EF3669eA39b87D4a850B4510f7aCBAC19be5f"
+  },
+  "mcpServers": {
+    "x402-markdown-scraper": {
+      "url": "https://x402-markdown-scraper.onrender.com/.well-known/mcp",
+      "headers": {
+        "Accept": "application/json"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "scrape_md",
+      "description": "Fetch a public URL and return stripped Markdown. Costs $0.01 USDC on Base via x402.",
+      "method": "GET",
+      "path": "/v1/scrape",
+      "url": "https://x402-markdown-scraper.onrender.com/v1/scrape",
+      "price": "$0.01",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Public http(s) URL of the article or page to convert."
+          }
+        },
+        "required": ["url"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "page_summary",
+      "description": "Scrape a URL and return a 3-bullet executive summary plus Markdown. Costs $0.02 USDC.",
+      "method": "GET",
+      "path": "/v1/summary",
+      "url": "https://x402-markdown-scraper.onrender.com/v1/summary",
+      "price": "$0.02",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Public http(s) URL to summarize."
+          }
+        },
+        "required": ["url"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "page_metadata",
+      "description": "Extract Open Graph, JSON-LD, author, publish date, and word count. Costs $0.01 USDC.",
+      "method": "GET",
+      "path": "/v1/extract-metadata",
+      "url": "https://x402-markdown-scraper.onrender.com/v1/extract-metadata",
+      "price": "$0.01",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Public http(s) URL to inspect."
+          }
+        },
+        "required": ["url"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "doc_pdf",
+      "description": "Fetch a PDF URL and return structured Markdown. Costs $0.05 USDC.",
+      "method": "GET",
+      "path": "/v1/parse-pdf",
+      "url": "https://x402-markdown-scraper.onrender.com/v1/parse-pdf",
+      "price": "$0.05",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Public http(s) PDF URL."
+          }
+        },
+        "required": ["url"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "site_crawl",
+      "description": "Crawl internal links up to 3 levels into a document map. Costs $0.15 USDC.",
+      "method": "GET",
+      "path": "/v1/deep-crawl",
+      "url": "https://x402-markdown-scraper.onrender.com/v1/deep-crawl",
+      "price": "$0.15",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Public http(s) starting URL."
+          },
+          "max_depth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3,
+            "default": 2,
+            "description": "Internal link depth, 1-3."
+          }
+        },
+        "required": ["url"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
